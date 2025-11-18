@@ -23,12 +23,390 @@
 /* 垂直间距 */
 /* 透明度 */
 /* 文章场景相关 */
+/* Copy CSS liên quan Editor vào đây */
+.editor-wrapper[data-v-7d79903f] {
+  background-color: #fff;
+  margin-bottom: 12px;
+  padding: 15px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  display: flex;
+  flex-direction: column;
+}
+.editor-label-row[data-v-7d79903f] {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.item-left[data-v-7d79903f] {
+  display: flex;
+  align-items: center;
+  margin-right: 15px;
+}
+.item-icon[data-v-7d79903f] {
+  width: 22px;
+  height: 22px;
+  opacity: 0.6;
+}
+.label-text[data-v-7d79903f] {
+  font-size: 15px;
+  color: #666;
+}
+
+/* Toolbar CSS */
+.toolbar[data-v-7d79903f] {
+  background-color: #f9f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 5px;
+  margin-bottom: 10px;
+}
+.tool-row[data-v-7d79903f] {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+.tool-row[data-v-7d79903f]:first-child {
+  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 4px;
+  padding-bottom: 8px;
+}
+.tool-item[data-v-7d79903f] {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-right: 2px;
+  border-radius: 4px;
+  position: relative;
+}
+.tool-item[data-v-7d79903f]:active, .tool-item.active[data-v-7d79903f] {
+  background-color: #e6e6e6;
+}
+.tool-item.disabled[data-v-7d79903f] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.txt-icon[data-v-7d79903f] {
+  font-size: 16px;
+  color: #333;
+  font-weight: 500;
+  font-family: serif;
+}
+.bold[data-v-7d79903f] {
+  font-weight: 900;
+}
+.italic[data-v-7d79903f] {
+  font-style: italic;
+}
+.underline[data-v-7d79903f] {
+  text-decoration: underline;
+}
+.strike[data-v-7d79903f] {
+  text-decoration: line-through;
+}
+.img-tool[data-v-7d79903f] {
+  width: 18px;
+  height: 18px;
+  opacity: 0.8;
+}
+.tool-divider[data-v-7d79903f] {
+  width: 1px;
+  height: 18px;
+  background-color: #ccc;
+  margin: 0 6px;
+}
+.color-text[data-v-7d79903f] {
+  font-weight: bold;
+}
+.color-bar[data-v-7d79903f] {
+  width: 14px;
+  height: 3px;
+  margin-top: -2px;
+  border-radius: 1px;
+}
+.bg-text[data-v-7d79903f] {
+  padding: 0 4px;
+  border-radius: 2px;
+  font-size: 14px;
+  border: 1px solid #ddd;
+}
+.tool-picker[data-v-7d79903f] {
+  margin-left: auto;
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 2px 8px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+.picker-label[data-v-7d79903f] {
+  font-size: 12px;
+  color: #333;
+}
+.ql-container[data-v-7d79903f] {
+  min-height: 120px;
+  width: 100%;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #333;
+}
+.static-view[data-v-7d79903f] {
+  padding: 10px 0;
+  border-top: 1px solid #eee;
+  color: #333;
+  min-height: 120px;
+  overflow-y: auto;
+}
+
+/* Popup Styles */
+.color-popup-overlay[data-v-7d79903f], .link-popup-overlay[data-v-7d79903f] {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.color-popup[data-v-7d79903f], .link-popup[data-v-7d79903f] {
+  background-color: #fff;
+  width: 85%;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  animation: popIn-7d79903f 0.2s ease-out;
+}
+@keyframes popIn-7d79903f {
+from {
+    transform: scale(0.9);
+    opacity: 0;
+}
+to {
+    transform: scale(1);
+    opacity: 1;
+}
+}
+.popup-title[data-v-7d79903f] {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 15px;
+  display: block;
+  text-align: center;
+  color: #333;
+}
+.color-grid[data-v-7d79903f] {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.color-cell[data-v-7d79903f] {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  border: 1px solid #eee;
+}
+.remove-color[data-v-7d79903f] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #fff;
+  color: #ff0000;
+  font-size: 18px;
+  font-weight: bold;
+  border: 1px solid #ccc;
+}
+.input-group[data-v-7d79903f] {
+  margin-bottom: 15px;
+}
+.input-label[data-v-7d79903f] {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 5px;
+  display: block;
+  font-weight: 500;
+}
+.link-input[data-v-7d79903f] {
+  width: 100%;
+  border: 1px solid #ddd;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 15px;
+  box-sizing: border-box;
+  outline: none;
+}
+.link-input[data-v-7d79903f]:focus {
+  border-color: #007aff;
+}
+.link-actions[data-v-7d79903f] {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 5px;
+}
+.link-btn[data-v-7d79903f] {
+  font-size: 14px;
+  height: 36px;
+  line-height: 36px;
+  padding: 0 15px;
+  border-radius: 4px;
+  border: none;
+  margin: 0;
+}
+.link-btn.cancel[data-v-7d79903f] {
+  background-color: #f0f0f0;
+  color: #333;
+}
+.link-btn.remove[data-v-7d79903f] {
+  background-color: #fff;
+  color: #ff3b30;
+  border: 1px solid #ff3b30;
+  margin-right: auto;
+}
+.link-btn.confirm[data-v-7d79903f] {
+  background-color: #007aff;
+  color: #fff;
+}
+/**
+ * 这里是uni-app内置的常用样式变量
+ *
+ * uni-app 官方扩展插件及插件市场（https://ext.dcloud.net.cn）上很多三方插件均使用了这些样式变量
+ * 如果你是插件开发者，建议你使用scss预处理，并在插件代码中直接使用这些变量（无需 import 这个文件），方便用户通过搭积木的方式开发整体风格一致的App
+ *
+ */
+/**
+ * 如果你是App开发者（插件使用者），你可以通过修改这些变量来定制自己的插件主题，实现自定义主题功能
+ *
+ * 如果你的项目同样使用了scss预处理，你也可以直接在你的 scss 代码中使用如下变量，同时无需 import 这个文件
+ */
+/* 颜色变量 */
+/* 行为相关颜色 */
+/* 文字基本颜色 */
+/* 背景颜色 */
+/* 边框颜色 */
+/* 尺寸变量 */
+/* 文字尺寸 */
+/* 图片尺寸 */
+/* Border Radius */
+/* 水平间距 */
+/* 垂直间距 */
+/* 透明度 */
+/* 文章场景相关 */
+/* CSS chuyên biệt cho DatePicker */
+.flat-item[data-v-245edb6a] {
+  background-color: #fff;
+  margin-bottom: 12px;
+  padding: 15px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+.item-left[data-v-245edb6a] {
+  display: flex;
+  align-items: center;
+  margin-right: 15px;
+}
+.item-icon[data-v-245edb6a] {
+  width: 22px;
+  height: 22px;
+  opacity: 0.6;
+}
+.icon-top-aligned[data-v-245edb6a] {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+.date-compound-block[data-v-245edb6a] {
+  align-items: flex-start;
+}
+.right-column[data-v-245edb6a] {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.date-row[data-v-245edb6a] {
+  width: 100%;
+  height: 30px;
+  display: flex;
+  align-items: center;
+}
+.full-width-picker[data-v-245edb6a] {
+  width: 100%;
+}
+.item-picker[data-v-245edb6a] {
+  text-align: left;
+  font-size: 15px;
+  color: #333;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+.placeholder-color[data-v-245edb6a] {
+  color: #808080;
+}
+.picker-label[data-v-245edb6a] {
+  font-weight: bold;
+  color: #666;
+  margin-right: 6px;
+  font-size: 14px;
+}
+.inner-divider[data-v-245edb6a] {
+  height: 1px;
+  background-color: #f0f0f0;
+  margin: 10px 0;
+  width: 100%;
+}
+.split-row[data-v-245edb6a] {
+  justify-content: space-between;
+}
+.half-picker[data-v-245edb6a] {
+  flex: 1;
+}
+.vertical-divider[data-v-245edb6a] {
+  width: 1px;
+  height: 18px;
+  background-color: #ccc;
+  margin: 0 10px;
+}
+/**
+ * 这里是uni-app内置的常用样式变量
+ *
+ * uni-app 官方扩展插件及插件市场（https://ext.dcloud.net.cn）上很多三方插件均使用了这些样式变量
+ * 如果你是插件开发者，建议你使用scss预处理，并在插件代码中直接使用这些变量（无需 import 这个文件），方便用户通过搭积木的方式开发整体风格一致的App
+ *
+ */
+/**
+ * 如果你是App开发者（插件使用者），你可以通过修改这些变量来定制自己的插件主题，实现自定义主题功能
+ *
+ * 如果你的项目同样使用了scss预处理，你也可以直接在你的 scss 代码中使用如下变量，同时无需 import 这个文件
+ */
+/* 颜色变量 */
+/* 行为相关颜色 */
+/* 文字基本颜色 */
+/* 背景颜色 */
+/* 边框颜色 */
+/* 尺寸变量 */
+/* 文字尺寸 */
+/* 图片尺寸 */
+/* Border Radius */
+/* 水平间距 */
+/* 垂直间距 */
+/* 透明度 */
+/* 文章场景相关 */
 .container {
   min-height: 100vh;
   background-color: #f5f5f7;
   padding: 15px;
   box-sizing: border-box;
 }
+
+/* CSS chung cho các input flat-item (nếu chưa có trong global) */
 .flat-item {
   background-color: #fff;
   margin-bottom: 12px;
@@ -42,10 +420,6 @@
   align-items: center;
   margin-right: 15px;
 }
-.icon-top-aligned {
-  align-self: flex-start;
-  margin-top: 2px;
-}
 .item-icon {
   width: 22px;
   height: 22px;
@@ -56,298 +430,6 @@
   text-align: left;
   font-size: 15px;
   color: #333;
-}
-.editor-container {
-  background-color: #fff;
-  margin-bottom: 12px;
-  padding: 15px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-  display: flex;
-  flex-direction: column;
-}
-.editor-label-row {
-  display: flex;
-  align-items: center;
-  margin-bottom: 8px;
-}
-.label-text {
-  font-size: 15px;
-  color: #666;
-}
-.toolbar {
-  background-color: #f9f9fa;
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
-  padding: 5px;
-  margin-bottom: 10px;
-}
-.tool-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  padding: 4px 0;
-}
-.tool-row:first-child {
-  border-bottom: 1px solid #f0f0f0;
-  margin-bottom: 4px;
-  padding-bottom: 8px;
-}
-.tool-item {
-  width: 34px;
-  height: 34px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  margin-right: 2px;
-  border-radius: 4px;
-  position: relative;
-}
-.tool-item:active, .tool-item.active {
-  background-color: #e6e6e6;
-}
-.tool-item.disabled {
-  opacity: 0.5;
-  pointer-events: none;
-}
-.txt-icon {
-  font-size: 16px;
-  color: #333;
-  font-weight: 500;
-  font-family: serif;
-}
-.bold {
-  font-weight: 900;
-}
-.italic {
-  font-style: italic;
-}
-.underline {
-  text-decoration: underline;
-}
-.strike {
-  text-decoration: line-through;
-}
-.img-tool {
-  width: 18px;
-  height: 18px;
-  opacity: 0.8;
-}
-.tool-divider {
-  width: 1px;
-  height: 18px;
-  background-color: #ccc;
-  margin: 0 6px;
-}
-.color-text {
-  font-weight: bold;
-}
-.color-bar {
-  width: 14px;
-  height: 3px;
-  margin-top: -2px;
-  border-radius: 1px;
-}
-.bg-text {
-  padding: 0 4px;
-  border-radius: 2px;
-  font-size: 14px;
-  border: 1px solid #ddd;
-}
-.tool-picker {
-  margin-left: auto;
-  background-color: #fff;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 2px 8px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-}
-.picker-label {
-  font-size: 12px;
-  color: #333;
-}
-.ql-container {
-  min-height: 120px;
-  width: 100%;
-  font-size: 15px;
-  line-height: 1.6;
-  color: #333;
-}
-.static-view {
-  padding: 10px 0;
-  border-top: 1px solid #eee;
-  color: #333;
-  min-height: 120px;
-  overflow-y: auto;
-}
-.color-popup-overlay, .link-popup-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.4);
-  z-index: 9999;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-.color-popup, .link-popup {
-  background-color: #fff;
-  width: 85%;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-  animation: popIn 0.2s ease-out;
-}
-@keyframes popIn {
-from {
-    transform: scale(0.9);
-    opacity: 0;
-}
-to {
-    transform: scale(1);
-    opacity: 1;
-}
-}
-.popup-title {
-  font-size: 16px;
-  font-weight: bold;
-  margin-bottom: 15px;
-  display: block;
-  text-align: center;
-  color: #333;
-}
-.color-grid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-}
-.color-cell {
-  width: 30px;
-  height: 30px;
-  border-radius: 4px;
-  border: 1px solid #eee;
-}
-.remove-color {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: #fff;
-  color: #ff0000;
-  font-size: 18px;
-  font-weight: bold;
-  border: 1px solid #ccc;
-}
-.input-group {
-  margin-bottom: 15px;
-}
-.input-label {
-  font-size: 13px;
-  color: #666;
-  margin-bottom: 5px;
-  display: block;
-  font-weight: 500;
-}
-.link-input {
-  width: 100%;
-  border: 1px solid #ddd;
-  padding: 10px;
-  border-radius: 6px;
-  font-size: 15px;
-  box-sizing: border-box;
-  outline: none;
-}
-.link-input:focus {
-  border-color: #007aff;
-}
-.link-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 5px;
-}
-.link-btn {
-  font-size: 14px;
-  height: 36px;
-  line-height: 36px;
-  padding: 0 15px;
-  border-radius: 4px;
-  border: none;
-  margin: 0;
-}
-.link-btn.cancel {
-  background-color: #f0f0f0;
-  color: #333;
-}
-.link-btn.remove {
-  background-color: #fff;
-  color: #ff3b30;
-  border: 1px solid #ff3b30;
-  margin-right: auto;
-}
-.link-btn.confirm {
-  background-color: #007aff;
-  color: #fff;
-}
-
-/* Styles cho Date Picker */
-.date-compound-block {
-  align-items: flex-start;
-}
-.right-column {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-.date-row {
-  width: 100%;
-  height: 30px;
-  display: flex;
-  align-items: center;
-}
-.full-width-picker {
-  width: 100%;
-}
-.item-picker {
-  text-align: left;
-  font-size: 15px;
-  color: #333;
-  width: 100%;
-  display: flex;
-  align-items: center;
-}
-.placeholder-color {
-  color: #808080;
-}
-.picker-label {
-  font-weight: bold;
-  color: #666;
-  margin-right: 6px;
-  font-size: 14px;
-}
-.inner-divider {
-  height: 1px;
-  background-color: #f0f0f0;
-  margin: 10px 0;
-  width: 100%;
-}
-
-/* Split Row cho Ngày + Giờ */
-.split-row {
-  justify-content: space-between;
-}
-.half-picker {
-  flex: 1;
-}
-.vertical-divider {
-  width: 1px;
-  height: 18px;
-  background-color: #ccc;
-  margin: 0 10px;
 }
 .footer-action {
   margin-top: 30px;

@@ -1,20 +1,22 @@
 // api/auth.js
 import { request } from '@/utils/request.js';
+import { SYSTEM_CONFIG } from '@/utils/enums.js'; // Import
 
-// 1. API Đăng nhập hệ thống (Chỉ dùng cho Dev Mode / Localhost)
+// 1. API Đăng nhập hệ thống
 export const systemLogin = (username, password) => {
     return new Promise((resolve, reject) => {
         uni.request({
-            url: 'https://api-staging.vbot.vn/v1.0/token', // API Auth gốc
+            url: 'https://api-staging.vbot.vn/v1.0/token',
             method: 'POST',
-            header: { 'Content-Type': 'application/x-www-form-urlencoded' }, // API token thường dùng form-urlencoded
+            header: { 'Content-Type': 'application/x-www-form-urlencoded' },
             data: {
                 username: username,
                 password: password,
                 grant_type: 'password',
-                type_account: 0, // Hoặc giá trị mặc định của bạn
-                source: 'Desktop-RTC'
-                // Các field khác nếu cần fix cứng: firebase_token, token_call...
+                type_account: 0,
+                
+                // [SỬA] Thay thế 'Desktop-RTC'
+                source: SYSTEM_CONFIG.SOURCE_PARAM 
             },
             success: (res) => {
                 if (res.statusCode === 200 && res.data.access_token) {
@@ -28,7 +30,7 @@ export const systemLogin = (username, password) => {
     });
 };
 
-// 2. API Lấy Token riêng cho module Todo (Quan trọng)
+// 2. API Lấy Token riêng cho module Todo
 export const getTodoToken = (rootToken, projectCode, uid) => {
     return new Promise((resolve, reject) => {
         uni.request({
@@ -37,15 +39,15 @@ export const getTodoToken = (rootToken, projectCode, uid) => {
             data: {
                 projectCode: projectCode,
                 uid: uid,
-                type: 'TODO',
-                source: 'Desktop-RTC'
+                
+                // [SỬA] Thay thế cứng bằng Enum
+                type: SYSTEM_CONFIG.MODULE_TYPE,   // 'TODO'
+                source: SYSTEM_CONFIG.SOURCE_PARAM // 'Desktop-RTC'
             },
             header: {
-                // QUAN TRỌNG: Dùng Token Gốc để xin Token Con
                 'Authorization': `Bearer ${rootToken}` 
             },
             success: (res) => {
-                // API trả về data bọc trong data: { status: 1, data: { token: '...' } }
                 if (res.data && res.data.data && res.data.data.token) {
                     resolve(res.data.data.token);
                 } else {

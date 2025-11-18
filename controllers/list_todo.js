@@ -3,7 +3,7 @@ import { onShow } from '@dcloudio/uni-app';
 import { getTodos, getTodoCount, deleteTodo } from '@/api/todo.js';
 import { TODO_STATUS, STATUS_LABELS } from '@/utils/constants.js';
 import { buildTodoParams } from '@/models/todo.js';
-
+import { TODO_SOURCE } from '@/utils/enums.js';
 export const useListTodoController = () => {
     // --- STATE CƠ BẢN ---
     const todos = ref([]);
@@ -37,7 +37,13 @@ export const useListTodoController = () => {
     // Nguồn
     const sourceOptions = ['Tất cả', 'CALL', 'CUSTOMER', 'CONVERSATION', 'CHAT_MESSAGE'];
         // Giá trị bắn API tương ứng (map 1-1 với mảng trên)
-        const sourceValues = ['', 'CALL', 'CUSTOMER', 'CONVERSATION', 'CHAT_MESSAGE'];
+        const sourceValues = [
+                '', 
+                TODO_SOURCE.CALL, 
+                TODO_SOURCE.CUSTOMER, 
+                TODO_SOURCE.CONVERSATION, 
+                TODO_SOURCE.CHAT_MESSAGE
+            ];
         const sourceIndex = ref(0);
 
     // Object chứa giá trị input/date

@@ -1,9 +1,10 @@
 // models/create_todo.js
+import { TODO_STATUS } from '@/utils/constants.js'; // Import Status
+import { TODO_SOURCE, DEFAULT_VALUES } from '@/utils/enums.js'; // Import Enums
 
 // Helper: Chuyển đổi chuỗi ngày giờ sang timestamp
 const dateToTimestamp = (dateStr) => {
     if (!dateStr) return -1;
-    // Thay thế dấu / bằng - để đảm bảo chuẩn ISO nếu cần (cho iOS)
     const safeDateStr = dateStr.replace(/\//g, '-');
     const dateObj = new Date(safeDateStr);
     return isNaN(dateObj.getTime()) ? -1 : dateObj.getTime();
@@ -14,38 +15,37 @@ const dateToTimestamp = (dateStr) => {
  */
 export const buildCreateTodoPayload = (form, config) => {
     
-    // Ghép Ngày + Giờ cho phần thông báo
-    // Ví dụ: "2025-11-18" + " " + "14:30" = "2025-11-18 14:30"
     const fullNotifyDateTime = `${form.notifyDate} ${form.notifyTime || '00:00'}`;
-
-    // Với ngày hết hạn, thường mặc định là cuối ngày hoặc đầu ngày (ở đây để nguyên ngày)
     const fullDueDate = form.dueDate; 
 
     return {
-        // 1. Các trường Text cơ bản
         title: form.name,
-        description: form.desc || "", 
+        description: form.desc || DEFAULT_VALUES.STRING, 
         
-        // 2. Các trường Config / System
         projectCode: config.projectCode,
         createdBy: config.uid,
-        status: 'TO_DO',
         
-        // 3. Enum & Loại
-        links: 'CALL', 
-        pluginType: '', 
+        // [SỬA] Dùng Constant có sẵn
+        status: TODO_STATUS.NEW, // Thay cho 'TO_DO'
         
-        // 4. Các trường Optional
-        customerCode: form.customer || "", 
-        assigneeId: form.assignee || "",    
-        groupId: "",
-        transId: "",
-        tagCodes: "",
+        // [SỬA] Dùng Enum
+        links: TODO_SOURCE.CALL, // Thay cho 'CALL'
+        
+        pluginType: DEFAULT_VALUES.PLUGIN_TYPE, 
+        
+        // [SỬA] Dùng Default Values
+        customerCode: form.customer || DEFAULT_VALUES.CUSTOMER_CODE, 
+        assigneeId: form.assignee || DEFAULT_VALUES.ASSIGNEE_ID,       
+        
+        groupId: DEFAULT_VALUES.GROUP_ID,
+        transId: DEFAULT_VALUES.TRANS_ID,
+        
+        // Các trường legacy (nếu chưa clear được thì để tạm hoặc tạo const)
+        tagCodes: "", 
         groupMemberUid: "",
-        files: "",
-        phone: "",
+        files: DEFAULT_VALUES.STRING,
+        phone: DEFAULT_VALUES.PHONE_PLACEHOLDER,
         
-        // 5. Các trường Thời gian (Đã xử lý ghép chuỗi ở trên)
         dueDate: dateToTimestamp(fullDueDate),
         notificationReceivedAt: dateToTimestamp(fullNotifyDateTime)
     };

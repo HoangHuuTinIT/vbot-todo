@@ -11,19 +11,19 @@ if (typeof Promise !== "undefined" && !Promise.prototype.finally) {
 }
 ;
 if (typeof uni !== "undefined" && uni && uni.requireGlobal) {
-  const global = uni.requireGlobal();
-  ArrayBuffer = global.ArrayBuffer;
-  Int8Array = global.Int8Array;
-  Uint8Array = global.Uint8Array;
-  Uint8ClampedArray = global.Uint8ClampedArray;
-  Int16Array = global.Int16Array;
-  Uint16Array = global.Uint16Array;
-  Int32Array = global.Int32Array;
-  Uint32Array = global.Uint32Array;
-  Float32Array = global.Float32Array;
-  Float64Array = global.Float64Array;
-  BigInt64Array = global.BigInt64Array;
-  BigUint64Array = global.BigUint64Array;
+  const global2 = uni.requireGlobal();
+  ArrayBuffer = global2.ArrayBuffer;
+  Int8Array = global2.Int8Array;
+  Uint8Array = global2.Uint8Array;
+  Uint8ClampedArray = global2.Uint8ClampedArray;
+  Int16Array = global2.Int16Array;
+  Uint16Array = global2.Uint16Array;
+  Int32Array = global2.Int32Array;
+  Uint32Array = global2.Uint32Array;
+  Float32Array = global2.Float32Array;
+  Float64Array = global2.Float64Array;
+  BigInt64Array = global2.BigInt64Array;
+  BigUint64Array = global2.BigUint64Array;
 }
 ;
 if (uni.restoreGlobal) {
@@ -47,39 +47,1859 @@ if (uni.restoreGlobal) {
     1 | 2
     /* HookFlags.PAGE */
   );
-  const request = (options) => {
-    return new Promise((resolve, reject) => {
-      const todoToken = uni.getStorageSync("todo_access_token");
-      const rootToken = uni.getStorageSync("vbot_root_token");
-      const finalToken = todoToken || rootToken;
-      if (!finalToken) {
-        formatAppLog("warn", "at utils/request.js:14", "Chưa có Token nào cả!");
+  var isVue2 = false;
+  function set(target, key, val) {
+    if (Array.isArray(target)) {
+      target.length = Math.max(target.length, key);
+      target.splice(key, 1, val);
+      return val;
+    }
+    target[key] = val;
+    return val;
+  }
+  function del(target, key) {
+    if (Array.isArray(target)) {
+      target.splice(key, 1);
+      return;
+    }
+    delete target[key];
+  }
+  function getDevtoolsGlobalHook() {
+    return getTarget().__VUE_DEVTOOLS_GLOBAL_HOOK__;
+  }
+  function getTarget() {
+    return typeof navigator !== "undefined" && typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : {};
+  }
+  const isProxyAvailable = typeof Proxy === "function";
+  const HOOK_SETUP = "devtools-plugin:setup";
+  const HOOK_PLUGIN_SETTINGS_SET = "plugin:settings:set";
+  let supported;
+  let perf;
+  function isPerformanceSupported() {
+    var _a;
+    if (supported !== void 0) {
+      return supported;
+    }
+    if (typeof window !== "undefined" && window.performance) {
+      supported = true;
+      perf = window.performance;
+    } else if (typeof global !== "undefined" && ((_a = global.perf_hooks) === null || _a === void 0 ? void 0 : _a.performance)) {
+      supported = true;
+      perf = global.perf_hooks.performance;
+    } else {
+      supported = false;
+    }
+    return supported;
+  }
+  function now() {
+    return isPerformanceSupported() ? perf.now() : Date.now();
+  }
+  class ApiProxy {
+    constructor(plugin, hook) {
+      this.target = null;
+      this.targetQueue = [];
+      this.onQueue = [];
+      this.plugin = plugin;
+      this.hook = hook;
+      const defaultSettings = {};
+      if (plugin.settings) {
+        for (const id in plugin.settings) {
+          const item = plugin.settings[id];
+          defaultSettings[id] = item.defaultValue;
+        }
       }
+      const localSettingsSaveId = `__vue-devtools-plugin-settings__${plugin.id}`;
+      let currentSettings = Object.assign({}, defaultSettings);
+      try {
+        const raw = localStorage.getItem(localSettingsSaveId);
+        const data = JSON.parse(raw);
+        Object.assign(currentSettings, data);
+      } catch (e) {
+      }
+      this.fallbacks = {
+        getSettings() {
+          return currentSettings;
+        },
+        setSettings(value) {
+          try {
+            localStorage.setItem(localSettingsSaveId, JSON.stringify(value));
+          } catch (e) {
+          }
+          currentSettings = value;
+        },
+        now() {
+          return now();
+        }
+      };
+      if (hook) {
+        hook.on(HOOK_PLUGIN_SETTINGS_SET, (pluginId, value) => {
+          if (pluginId === this.plugin.id) {
+            this.fallbacks.setSettings(value);
+          }
+        });
+      }
+      this.proxiedOn = new Proxy({}, {
+        get: (_target, prop) => {
+          if (this.target) {
+            return this.target.on[prop];
+          } else {
+            return (...args) => {
+              this.onQueue.push({
+                method: prop,
+                args
+              });
+            };
+          }
+        }
+      });
+      this.proxiedTarget = new Proxy({}, {
+        get: (_target, prop) => {
+          if (this.target) {
+            return this.target[prop];
+          } else if (prop === "on") {
+            return this.proxiedOn;
+          } else if (Object.keys(this.fallbacks).includes(prop)) {
+            return (...args) => {
+              this.targetQueue.push({
+                method: prop,
+                args,
+                resolve: () => {
+                }
+              });
+              return this.fallbacks[prop](...args);
+            };
+          } else {
+            return (...args) => {
+              return new Promise((resolve) => {
+                this.targetQueue.push({
+                  method: prop,
+                  args,
+                  resolve
+                });
+              });
+            };
+          }
+        }
+      });
+    }
+    async setRealTarget(target) {
+      this.target = target;
+      for (const item of this.onQueue) {
+        this.target.on[item.method](...item.args);
+      }
+      for (const item of this.targetQueue) {
+        item.resolve(await this.target[item.method](...item.args));
+      }
+    }
+  }
+  function setupDevtoolsPlugin(pluginDescriptor, setupFn) {
+    const descriptor = pluginDescriptor;
+    const target = getTarget();
+    const hook = getDevtoolsGlobalHook();
+    const enableProxy = isProxyAvailable && descriptor.enableEarlyProxy;
+    if (hook && (target.__VUE_DEVTOOLS_PLUGIN_API_AVAILABLE__ || !enableProxy)) {
+      hook.emit(HOOK_SETUP, pluginDescriptor, setupFn);
+    } else {
+      const proxy = enableProxy ? new ApiProxy(descriptor, hook) : null;
+      const list = target.__VUE_DEVTOOLS_PLUGINS__ = target.__VUE_DEVTOOLS_PLUGINS__ || [];
+      list.push({
+        pluginDescriptor: descriptor,
+        setupFn,
+        proxy
+      });
+      if (proxy)
+        setupFn(proxy.proxiedTarget);
+    }
+  }
+  /*!
+   * pinia v2.1.7
+   * (c) 2023 Eduardo San Martin Morote
+   * @license MIT
+   */
+  let activePinia;
+  const setActivePinia = (pinia) => activePinia = pinia;
+  const getActivePinia = () => vue.hasInjectionContext() && vue.inject(piniaSymbol) || activePinia;
+  const piniaSymbol = Symbol("pinia");
+  function isPlainObject(o) {
+    return o && typeof o === "object" && Object.prototype.toString.call(o) === "[object Object]" && typeof o.toJSON !== "function";
+  }
+  var MutationType;
+  (function(MutationType2) {
+    MutationType2["direct"] = "direct";
+    MutationType2["patchObject"] = "patch object";
+    MutationType2["patchFunction"] = "patch function";
+  })(MutationType || (MutationType = {}));
+  const IS_CLIENT = typeof window !== "undefined";
+  const USE_DEVTOOLS = IS_CLIENT;
+  const _global = /* @__PURE__ */ (() => typeof window === "object" && window.window === window ? window : typeof self === "object" && self.self === self ? self : typeof global === "object" && global.global === global ? global : typeof globalThis === "object" ? globalThis : { HTMLElement: null })();
+  function bom(blob, { autoBom = false } = {}) {
+    if (autoBom && /^\s*(?:text\/\S*|application\/xml|\S*\/\S*\+xml)\s*;.*charset\s*=\s*utf-8/i.test(blob.type)) {
+      return new Blob([String.fromCharCode(65279), blob], { type: blob.type });
+    }
+    return blob;
+  }
+  function download(url, name, opts) {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", url);
+    xhr.responseType = "blob";
+    xhr.onload = function() {
+      saveAs(xhr.response, name, opts);
+    };
+    xhr.onerror = function() {
+      console.error("could not download file");
+    };
+    xhr.send();
+  }
+  function corsEnabled(url) {
+    const xhr = new XMLHttpRequest();
+    xhr.open("HEAD", url, false);
+    try {
+      xhr.send();
+    } catch (e) {
+    }
+    return xhr.status >= 200 && xhr.status <= 299;
+  }
+  function click(node) {
+    try {
+      node.dispatchEvent(new MouseEvent("click"));
+    } catch (e) {
+      const evt = document.createEvent("MouseEvents");
+      evt.initMouseEvent("click", true, true, window, 0, 0, 0, 80, 20, false, false, false, false, 0, null);
+      node.dispatchEvent(evt);
+    }
+  }
+  const _navigator = typeof navigator === "object" ? navigator : { userAgent: "" };
+  const isMacOSWebView = /* @__PURE__ */ (() => /Macintosh/.test(_navigator.userAgent) && /AppleWebKit/.test(_navigator.userAgent) && !/Safari/.test(_navigator.userAgent))();
+  const saveAs = !IS_CLIENT ? () => {
+  } : (
+    // Use download attribute first if possible (#193 Lumia mobile) unless this is a macOS WebView or mini program
+    typeof HTMLAnchorElement !== "undefined" && "download" in HTMLAnchorElement.prototype && !isMacOSWebView ? downloadSaveAs : (
+      // Use msSaveOrOpenBlob as a second approach
+      "msSaveOrOpenBlob" in _navigator ? msSaveAs : (
+        // Fallback to using FileReader and a popup
+        fileSaverSaveAs
+      )
+    )
+  );
+  function downloadSaveAs(blob, name = "download", opts) {
+    const a = document.createElement("a");
+    a.download = name;
+    a.rel = "noopener";
+    if (typeof blob === "string") {
+      a.href = blob;
+      if (a.origin !== location.origin) {
+        if (corsEnabled(a.href)) {
+          download(blob, name, opts);
+        } else {
+          a.target = "_blank";
+          click(a);
+        }
+      } else {
+        click(a);
+      }
+    } else {
+      a.href = URL.createObjectURL(blob);
+      setTimeout(function() {
+        URL.revokeObjectURL(a.href);
+      }, 4e4);
+      setTimeout(function() {
+        click(a);
+      }, 0);
+    }
+  }
+  function msSaveAs(blob, name = "download", opts) {
+    if (typeof blob === "string") {
+      if (corsEnabled(blob)) {
+        download(blob, name, opts);
+      } else {
+        const a = document.createElement("a");
+        a.href = blob;
+        a.target = "_blank";
+        setTimeout(function() {
+          click(a);
+        });
+      }
+    } else {
+      navigator.msSaveOrOpenBlob(bom(blob, opts), name);
+    }
+  }
+  function fileSaverSaveAs(blob, name, opts, popup) {
+    popup = popup || open("", "_blank");
+    if (popup) {
+      popup.document.title = popup.document.body.innerText = "downloading...";
+    }
+    if (typeof blob === "string")
+      return download(blob, name, opts);
+    const force = blob.type === "application/octet-stream";
+    const isSafari = /constructor/i.test(String(_global.HTMLElement)) || "safari" in _global;
+    const isChromeIOS = /CriOS\/[\d]+/.test(navigator.userAgent);
+    if ((isChromeIOS || force && isSafari || isMacOSWebView) && typeof FileReader !== "undefined") {
+      const reader = new FileReader();
+      reader.onloadend = function() {
+        let url = reader.result;
+        if (typeof url !== "string") {
+          popup = null;
+          throw new Error("Wrong reader.result type");
+        }
+        url = isChromeIOS ? url : url.replace(/^data:[^;]*;/, "data:attachment/file;");
+        if (popup) {
+          popup.location.href = url;
+        } else {
+          location.assign(url);
+        }
+        popup = null;
+      };
+      reader.readAsDataURL(blob);
+    } else {
+      const url = URL.createObjectURL(blob);
+      if (popup)
+        popup.location.assign(url);
+      else
+        location.href = url;
+      popup = null;
+      setTimeout(function() {
+        URL.revokeObjectURL(url);
+      }, 4e4);
+    }
+  }
+  function toastMessage(message, type) {
+    const piniaMessage = "🍍 " + message;
+    if (typeof __VUE_DEVTOOLS_TOAST__ === "function") {
+      __VUE_DEVTOOLS_TOAST__(piniaMessage, type);
+    } else if (type === "error") {
+      console.error(piniaMessage);
+    } else if (type === "warn") {
+      console.warn(piniaMessage);
+    } else {
+      console.log(piniaMessage);
+    }
+  }
+  function isPinia(o) {
+    return "_a" in o && "install" in o;
+  }
+  function checkClipboardAccess() {
+    if (!("clipboard" in navigator)) {
+      toastMessage(`Your browser doesn't support the Clipboard API`, "error");
+      return true;
+    }
+  }
+  function checkNotFocusedError(error) {
+    if (error instanceof Error && error.message.toLowerCase().includes("document is not focused")) {
+      toastMessage('You need to activate the "Emulate a focused page" setting in the "Rendering" panel of devtools.', "warn");
+      return true;
+    }
+    return false;
+  }
+  async function actionGlobalCopyState(pinia) {
+    if (checkClipboardAccess())
+      return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(pinia.state.value));
+      toastMessage("Global state copied to clipboard.");
+    } catch (error) {
+      if (checkNotFocusedError(error))
+        return;
+      toastMessage(`Failed to serialize the state. Check the console for more details.`, "error");
+      console.error(error);
+    }
+  }
+  async function actionGlobalPasteState(pinia) {
+    if (checkClipboardAccess())
+      return;
+    try {
+      loadStoresState(pinia, JSON.parse(await navigator.clipboard.readText()));
+      toastMessage("Global state pasted from clipboard.");
+    } catch (error) {
+      if (checkNotFocusedError(error))
+        return;
+      toastMessage(`Failed to deserialize the state from clipboard. Check the console for more details.`, "error");
+      console.error(error);
+    }
+  }
+  async function actionGlobalSaveState(pinia) {
+    try {
+      saveAs(new Blob([JSON.stringify(pinia.state.value)], {
+        type: "text/plain;charset=utf-8"
+      }), "pinia-state.json");
+    } catch (error) {
+      toastMessage(`Failed to export the state as JSON. Check the console for more details.`, "error");
+      console.error(error);
+    }
+  }
+  let fileInput;
+  function getFileOpener() {
+    if (!fileInput) {
+      fileInput = document.createElement("input");
+      fileInput.type = "file";
+      fileInput.accept = ".json";
+    }
+    function openFile() {
+      return new Promise((resolve, reject) => {
+        fileInput.onchange = async () => {
+          const files = fileInput.files;
+          if (!files)
+            return resolve(null);
+          const file = files.item(0);
+          if (!file)
+            return resolve(null);
+          return resolve({ text: await file.text(), file });
+        };
+        fileInput.oncancel = () => resolve(null);
+        fileInput.onerror = reject;
+        fileInput.click();
+      });
+    }
+    return openFile;
+  }
+  async function actionGlobalOpenStateFile(pinia) {
+    try {
+      const open2 = getFileOpener();
+      const result = await open2();
+      if (!result)
+        return;
+      const { text, file } = result;
+      loadStoresState(pinia, JSON.parse(text));
+      toastMessage(`Global state imported from "${file.name}".`);
+    } catch (error) {
+      toastMessage(`Failed to import the state from JSON. Check the console for more details.`, "error");
+      console.error(error);
+    }
+  }
+  function loadStoresState(pinia, state) {
+    for (const key in state) {
+      const storeState = pinia.state.value[key];
+      if (storeState) {
+        Object.assign(storeState, state[key]);
+      } else {
+        pinia.state.value[key] = state[key];
+      }
+    }
+  }
+  function formatDisplay(display) {
+    return {
+      _custom: {
+        display
+      }
+    };
+  }
+  const PINIA_ROOT_LABEL = "🍍 Pinia (root)";
+  const PINIA_ROOT_ID = "_root";
+  function formatStoreForInspectorTree(store) {
+    return isPinia(store) ? {
+      id: PINIA_ROOT_ID,
+      label: PINIA_ROOT_LABEL
+    } : {
+      id: store.$id,
+      label: store.$id
+    };
+  }
+  function formatStoreForInspectorState(store) {
+    if (isPinia(store)) {
+      const storeNames = Array.from(store._s.keys());
+      const storeMap = store._s;
+      const state2 = {
+        state: storeNames.map((storeId) => ({
+          editable: true,
+          key: storeId,
+          value: store.state.value[storeId]
+        })),
+        getters: storeNames.filter((id) => storeMap.get(id)._getters).map((id) => {
+          const store2 = storeMap.get(id);
+          return {
+            editable: false,
+            key: id,
+            value: store2._getters.reduce((getters, key) => {
+              getters[key] = store2[key];
+              return getters;
+            }, {})
+          };
+        })
+      };
+      return state2;
+    }
+    const state = {
+      state: Object.keys(store.$state).map((key) => ({
+        editable: true,
+        key,
+        value: store.$state[key]
+      }))
+    };
+    if (store._getters && store._getters.length) {
+      state.getters = store._getters.map((getterName) => ({
+        editable: false,
+        key: getterName,
+        value: store[getterName]
+      }));
+    }
+    if (store._customProperties.size) {
+      state.customProperties = Array.from(store._customProperties).map((key) => ({
+        editable: true,
+        key,
+        value: store[key]
+      }));
+    }
+    return state;
+  }
+  function formatEventData(events) {
+    if (!events)
+      return {};
+    if (Array.isArray(events)) {
+      return events.reduce((data, event) => {
+        data.keys.push(event.key);
+        data.operations.push(event.type);
+        data.oldValue[event.key] = event.oldValue;
+        data.newValue[event.key] = event.newValue;
+        return data;
+      }, {
+        oldValue: {},
+        keys: [],
+        operations: [],
+        newValue: {}
+      });
+    } else {
+      return {
+        operation: formatDisplay(events.type),
+        key: formatDisplay(events.key),
+        oldValue: events.oldValue,
+        newValue: events.newValue
+      };
+    }
+  }
+  function formatMutationType(type) {
+    switch (type) {
+      case MutationType.direct:
+        return "mutation";
+      case MutationType.patchFunction:
+        return "$patch";
+      case MutationType.patchObject:
+        return "$patch";
+      default:
+        return "unknown";
+    }
+  }
+  let isTimelineActive = true;
+  const componentStateTypes = [];
+  const MUTATIONS_LAYER_ID = "pinia:mutations";
+  const INSPECTOR_ID = "pinia";
+  const { assign: assign$1 } = Object;
+  const getStoreType = (id) => "🍍 " + id;
+  function registerPiniaDevtools(app, pinia) {
+    setupDevtoolsPlugin({
+      id: "dev.esm.pinia",
+      label: "Pinia 🍍",
+      logo: "https://pinia.vuejs.org/logo.svg",
+      packageName: "pinia",
+      homepage: "https://pinia.vuejs.org",
+      componentStateTypes,
+      app
+    }, (api) => {
+      if (typeof api.now !== "function") {
+        toastMessage("You seem to be using an outdated version of Vue Devtools. Are you still using the Beta release instead of the stable one? You can find the links at https://devtools.vuejs.org/guide/installation.html.");
+      }
+      api.addTimelineLayer({
+        id: MUTATIONS_LAYER_ID,
+        label: `Pinia 🍍`,
+        color: 15064968
+      });
+      api.addInspector({
+        id: INSPECTOR_ID,
+        label: "Pinia 🍍",
+        icon: "storage",
+        treeFilterPlaceholder: "Search stores",
+        actions: [
+          {
+            icon: "content_copy",
+            action: () => {
+              actionGlobalCopyState(pinia);
+            },
+            tooltip: "Serialize and copy the state"
+          },
+          {
+            icon: "content_paste",
+            action: async () => {
+              await actionGlobalPasteState(pinia);
+              api.sendInspectorTree(INSPECTOR_ID);
+              api.sendInspectorState(INSPECTOR_ID);
+            },
+            tooltip: "Replace the state with the content of your clipboard"
+          },
+          {
+            icon: "save",
+            action: () => {
+              actionGlobalSaveState(pinia);
+            },
+            tooltip: "Save the state as a JSON file"
+          },
+          {
+            icon: "folder_open",
+            action: async () => {
+              await actionGlobalOpenStateFile(pinia);
+              api.sendInspectorTree(INSPECTOR_ID);
+              api.sendInspectorState(INSPECTOR_ID);
+            },
+            tooltip: "Import the state from a JSON file"
+          }
+        ],
+        nodeActions: [
+          {
+            icon: "restore",
+            tooltip: 'Reset the state (with "$reset")',
+            action: (nodeId) => {
+              const store = pinia._s.get(nodeId);
+              if (!store) {
+                toastMessage(`Cannot reset "${nodeId}" store because it wasn't found.`, "warn");
+              } else if (typeof store.$reset !== "function") {
+                toastMessage(`Cannot reset "${nodeId}" store because it doesn't have a "$reset" method implemented.`, "warn");
+              } else {
+                store.$reset();
+                toastMessage(`Store "${nodeId}" reset.`);
+              }
+            }
+          }
+        ]
+      });
+      api.on.inspectComponent((payload, ctx) => {
+        const proxy = payload.componentInstance && payload.componentInstance.proxy;
+        if (proxy && proxy._pStores) {
+          const piniaStores = payload.componentInstance.proxy._pStores;
+          Object.values(piniaStores).forEach((store) => {
+            payload.instanceData.state.push({
+              type: getStoreType(store.$id),
+              key: "state",
+              editable: true,
+              value: store._isOptionsAPI ? {
+                _custom: {
+                  value: vue.toRaw(store.$state),
+                  actions: [
+                    {
+                      icon: "restore",
+                      tooltip: "Reset the state of this store",
+                      action: () => store.$reset()
+                    }
+                  ]
+                }
+              } : (
+                // NOTE: workaround to unwrap transferred refs
+                Object.keys(store.$state).reduce((state, key) => {
+                  state[key] = store.$state[key];
+                  return state;
+                }, {})
+              )
+            });
+            if (store._getters && store._getters.length) {
+              payload.instanceData.state.push({
+                type: getStoreType(store.$id),
+                key: "getters",
+                editable: false,
+                value: store._getters.reduce((getters, key) => {
+                  try {
+                    getters[key] = store[key];
+                  } catch (error) {
+                    getters[key] = error;
+                  }
+                  return getters;
+                }, {})
+              });
+            }
+          });
+        }
+      });
+      api.on.getInspectorTree((payload) => {
+        if (payload.app === app && payload.inspectorId === INSPECTOR_ID) {
+          let stores = [pinia];
+          stores = stores.concat(Array.from(pinia._s.values()));
+          payload.rootNodes = (payload.filter ? stores.filter((store) => "$id" in store ? store.$id.toLowerCase().includes(payload.filter.toLowerCase()) : PINIA_ROOT_LABEL.toLowerCase().includes(payload.filter.toLowerCase())) : stores).map(formatStoreForInspectorTree);
+        }
+      });
+      api.on.getInspectorState((payload) => {
+        if (payload.app === app && payload.inspectorId === INSPECTOR_ID) {
+          const inspectedStore = payload.nodeId === PINIA_ROOT_ID ? pinia : pinia._s.get(payload.nodeId);
+          if (!inspectedStore) {
+            return;
+          }
+          if (inspectedStore) {
+            payload.state = formatStoreForInspectorState(inspectedStore);
+          }
+        }
+      });
+      api.on.editInspectorState((payload, ctx) => {
+        if (payload.app === app && payload.inspectorId === INSPECTOR_ID) {
+          const inspectedStore = payload.nodeId === PINIA_ROOT_ID ? pinia : pinia._s.get(payload.nodeId);
+          if (!inspectedStore) {
+            return toastMessage(`store "${payload.nodeId}" not found`, "error");
+          }
+          const { path } = payload;
+          if (!isPinia(inspectedStore)) {
+            if (path.length !== 1 || !inspectedStore._customProperties.has(path[0]) || path[0] in inspectedStore.$state) {
+              path.unshift("$state");
+            }
+          } else {
+            path.unshift("state");
+          }
+          isTimelineActive = false;
+          payload.set(inspectedStore, path, payload.state.value);
+          isTimelineActive = true;
+        }
+      });
+      api.on.editComponentState((payload) => {
+        if (payload.type.startsWith("🍍")) {
+          const storeId = payload.type.replace(/^🍍\s*/, "");
+          const store = pinia._s.get(storeId);
+          if (!store) {
+            return toastMessage(`store "${storeId}" not found`, "error");
+          }
+          const { path } = payload;
+          if (path[0] !== "state") {
+            return toastMessage(`Invalid path for store "${storeId}":
+${path}
+Only state can be modified.`);
+          }
+          path[0] = "$state";
+          isTimelineActive = false;
+          payload.set(store, path, payload.state.value);
+          isTimelineActive = true;
+        }
+      });
+    });
+  }
+  function addStoreToDevtools(app, store) {
+    if (!componentStateTypes.includes(getStoreType(store.$id))) {
+      componentStateTypes.push(getStoreType(store.$id));
+    }
+    setupDevtoolsPlugin({
+      id: "dev.esm.pinia",
+      label: "Pinia 🍍",
+      logo: "https://pinia.vuejs.org/logo.svg",
+      packageName: "pinia",
+      homepage: "https://pinia.vuejs.org",
+      componentStateTypes,
+      app,
+      settings: {
+        logStoreChanges: {
+          label: "Notify about new/deleted stores",
+          type: "boolean",
+          defaultValue: true
+        }
+        // useEmojis: {
+        //   label: 'Use emojis in messages ⚡️',
+        //   type: 'boolean',
+        //   defaultValue: true,
+        // },
+      }
+    }, (api) => {
+      const now2 = typeof api.now === "function" ? api.now.bind(api) : Date.now;
+      store.$onAction(({ after, onError, name, args }) => {
+        const groupId = runningActionId++;
+        api.addTimelineEvent({
+          layerId: MUTATIONS_LAYER_ID,
+          event: {
+            time: now2(),
+            title: "🛫 " + name,
+            subtitle: "start",
+            data: {
+              store: formatDisplay(store.$id),
+              action: formatDisplay(name),
+              args
+            },
+            groupId
+          }
+        });
+        after((result) => {
+          activeAction = void 0;
+          api.addTimelineEvent({
+            layerId: MUTATIONS_LAYER_ID,
+            event: {
+              time: now2(),
+              title: "🛬 " + name,
+              subtitle: "end",
+              data: {
+                store: formatDisplay(store.$id),
+                action: formatDisplay(name),
+                args,
+                result
+              },
+              groupId
+            }
+          });
+        });
+        onError((error) => {
+          activeAction = void 0;
+          api.addTimelineEvent({
+            layerId: MUTATIONS_LAYER_ID,
+            event: {
+              time: now2(),
+              logType: "error",
+              title: "💥 " + name,
+              subtitle: "end",
+              data: {
+                store: formatDisplay(store.$id),
+                action: formatDisplay(name),
+                args,
+                error
+              },
+              groupId
+            }
+          });
+        });
+      }, true);
+      store._customProperties.forEach((name) => {
+        vue.watch(() => vue.unref(store[name]), (newValue, oldValue) => {
+          api.notifyComponentUpdate();
+          api.sendInspectorState(INSPECTOR_ID);
+          if (isTimelineActive) {
+            api.addTimelineEvent({
+              layerId: MUTATIONS_LAYER_ID,
+              event: {
+                time: now2(),
+                title: "Change",
+                subtitle: name,
+                data: {
+                  newValue,
+                  oldValue
+                },
+                groupId: activeAction
+              }
+            });
+          }
+        }, { deep: true });
+      });
+      store.$subscribe(({ events, type }, state) => {
+        api.notifyComponentUpdate();
+        api.sendInspectorState(INSPECTOR_ID);
+        if (!isTimelineActive)
+          return;
+        const eventData = {
+          time: now2(),
+          title: formatMutationType(type),
+          data: assign$1({ store: formatDisplay(store.$id) }, formatEventData(events)),
+          groupId: activeAction
+        };
+        if (type === MutationType.patchFunction) {
+          eventData.subtitle = "⤵️";
+        } else if (type === MutationType.patchObject) {
+          eventData.subtitle = "🧩";
+        } else if (events && !Array.isArray(events)) {
+          eventData.subtitle = events.type;
+        }
+        if (events) {
+          eventData.data["rawEvent(s)"] = {
+            _custom: {
+              display: "DebuggerEvent",
+              type: "object",
+              tooltip: "raw DebuggerEvent[]",
+              value: events
+            }
+          };
+        }
+        api.addTimelineEvent({
+          layerId: MUTATIONS_LAYER_ID,
+          event: eventData
+        });
+      }, { detached: true, flush: "sync" });
+      const hotUpdate = store._hotUpdate;
+      store._hotUpdate = vue.markRaw((newStore) => {
+        hotUpdate(newStore);
+        api.addTimelineEvent({
+          layerId: MUTATIONS_LAYER_ID,
+          event: {
+            time: now2(),
+            title: "🔥 " + store.$id,
+            subtitle: "HMR update",
+            data: {
+              store: formatDisplay(store.$id),
+              info: formatDisplay(`HMR update`)
+            }
+          }
+        });
+        api.notifyComponentUpdate();
+        api.sendInspectorTree(INSPECTOR_ID);
+        api.sendInspectorState(INSPECTOR_ID);
+      });
+      const { $dispose } = store;
+      store.$dispose = () => {
+        $dispose();
+        api.notifyComponentUpdate();
+        api.sendInspectorTree(INSPECTOR_ID);
+        api.sendInspectorState(INSPECTOR_ID);
+        api.getSettings().logStoreChanges && toastMessage(`Disposed "${store.$id}" store 🗑`);
+      };
+      api.notifyComponentUpdate();
+      api.sendInspectorTree(INSPECTOR_ID);
+      api.sendInspectorState(INSPECTOR_ID);
+      api.getSettings().logStoreChanges && toastMessage(`"${store.$id}" store installed 🆕`);
+    });
+  }
+  let runningActionId = 0;
+  let activeAction;
+  function patchActionForGrouping(store, actionNames, wrapWithProxy) {
+    const actions = actionNames.reduce((storeActions, actionName) => {
+      storeActions[actionName] = vue.toRaw(store)[actionName];
+      return storeActions;
+    }, {});
+    for (const actionName in actions) {
+      store[actionName] = function() {
+        const _actionId = runningActionId;
+        const trackedStore = wrapWithProxy ? new Proxy(store, {
+          get(...args) {
+            activeAction = _actionId;
+            return Reflect.get(...args);
+          },
+          set(...args) {
+            activeAction = _actionId;
+            return Reflect.set(...args);
+          }
+        }) : store;
+        activeAction = _actionId;
+        const retValue = actions[actionName].apply(trackedStore, arguments);
+        activeAction = void 0;
+        return retValue;
+      };
+    }
+  }
+  function devtoolsPlugin({ app, store, options }) {
+    if (store.$id.startsWith("__hot:")) {
+      return;
+    }
+    store._isOptionsAPI = !!options.state;
+    patchActionForGrouping(store, Object.keys(options.actions), store._isOptionsAPI);
+    const originalHotUpdate = store._hotUpdate;
+    vue.toRaw(store)._hotUpdate = function(newStore) {
+      originalHotUpdate.apply(this, arguments);
+      patchActionForGrouping(store, Object.keys(newStore._hmrPayload.actions), !!store._isOptionsAPI);
+    };
+    addStoreToDevtools(
+      app,
+      // FIXME: is there a way to allow the assignment from Store<Id, S, G, A> to StoreGeneric?
+      store
+    );
+  }
+  function createPinia() {
+    const scope = vue.effectScope(true);
+    const state = scope.run(() => vue.ref({}));
+    let _p = [];
+    let toBeInstalled = [];
+    const pinia = vue.markRaw({
+      install(app) {
+        setActivePinia(pinia);
+        {
+          pinia._a = app;
+          app.provide(piniaSymbol, pinia);
+          app.config.globalProperties.$pinia = pinia;
+          if (USE_DEVTOOLS) {
+            registerPiniaDevtools(app, pinia);
+          }
+          toBeInstalled.forEach((plugin) => _p.push(plugin));
+          toBeInstalled = [];
+        }
+      },
+      use(plugin) {
+        if (!this._a && !isVue2) {
+          toBeInstalled.push(plugin);
+        } else {
+          _p.push(plugin);
+        }
+        return this;
+      },
+      _p,
+      // it's actually undefined here
+      // @ts-expect-error
+      _a: null,
+      _e: scope,
+      _s: /* @__PURE__ */ new Map(),
+      state
+    });
+    if (USE_DEVTOOLS && typeof Proxy !== "undefined") {
+      pinia.use(devtoolsPlugin);
+    }
+    return pinia;
+  }
+  const isUseStore = (fn) => {
+    return typeof fn === "function" && typeof fn.$id === "string";
+  };
+  function patchObject(newState, oldState) {
+    for (const key in oldState) {
+      const subPatch = oldState[key];
+      if (!(key in newState)) {
+        continue;
+      }
+      const targetValue = newState[key];
+      if (isPlainObject(targetValue) && isPlainObject(subPatch) && !vue.isRef(subPatch) && !vue.isReactive(subPatch)) {
+        newState[key] = patchObject(targetValue, subPatch);
+      } else {
+        {
+          newState[key] = subPatch;
+        }
+      }
+    }
+    return newState;
+  }
+  function acceptHMRUpdate(initialUseStore, hot) {
+    return (newModule) => {
+      const pinia = hot.data.pinia || initialUseStore._pinia;
+      if (!pinia) {
+        return;
+      }
+      hot.data.pinia = pinia;
+      for (const exportName in newModule) {
+        const useStore = newModule[exportName];
+        if (isUseStore(useStore) && pinia._s.has(useStore.$id)) {
+          const id = useStore.$id;
+          if (id !== initialUseStore.$id) {
+            console.warn(`The id of the store changed from "${initialUseStore.$id}" to "${id}". Reloading.`);
+            return hot.invalidate();
+          }
+          const existingStore = pinia._s.get(id);
+          if (!existingStore) {
+            console.log(`[Pinia]: skipping hmr because store doesn't exist yet`);
+            return;
+          }
+          useStore(pinia, existingStore);
+        }
+      }
+    };
+  }
+  const noop = () => {
+  };
+  function addSubscription(subscriptions, callback, detached, onCleanup = noop) {
+    subscriptions.push(callback);
+    const removeSubscription = () => {
+      const idx = subscriptions.indexOf(callback);
+      if (idx > -1) {
+        subscriptions.splice(idx, 1);
+        onCleanup();
+      }
+    };
+    if (!detached && vue.getCurrentScope()) {
+      vue.onScopeDispose(removeSubscription);
+    }
+    return removeSubscription;
+  }
+  function triggerSubscriptions(subscriptions, ...args) {
+    subscriptions.slice().forEach((callback) => {
+      callback(...args);
+    });
+  }
+  const fallbackRunWithContext = (fn) => fn();
+  function mergeReactiveObjects(target, patchToApply) {
+    if (target instanceof Map && patchToApply instanceof Map) {
+      patchToApply.forEach((value, key) => target.set(key, value));
+    }
+    if (target instanceof Set && patchToApply instanceof Set) {
+      patchToApply.forEach(target.add, target);
+    }
+    for (const key in patchToApply) {
+      if (!patchToApply.hasOwnProperty(key))
+        continue;
+      const subPatch = patchToApply[key];
+      const targetValue = target[key];
+      if (isPlainObject(targetValue) && isPlainObject(subPatch) && target.hasOwnProperty(key) && !vue.isRef(subPatch) && !vue.isReactive(subPatch)) {
+        target[key] = mergeReactiveObjects(targetValue, subPatch);
+      } else {
+        target[key] = subPatch;
+      }
+    }
+    return target;
+  }
+  const skipHydrateSymbol = Symbol("pinia:skipHydration");
+  function skipHydrate(obj) {
+    return Object.defineProperty(obj, skipHydrateSymbol, {});
+  }
+  function shouldHydrate(obj) {
+    return !isPlainObject(obj) || !obj.hasOwnProperty(skipHydrateSymbol);
+  }
+  const { assign } = Object;
+  function isComputed(o) {
+    return !!(vue.isRef(o) && o.effect);
+  }
+  function createOptionsStore(id, options, pinia, hot) {
+    const { state, actions, getters } = options;
+    const initialState = pinia.state.value[id];
+    let store;
+    function setup() {
+      if (!initialState && !hot) {
+        {
+          pinia.state.value[id] = state ? state() : {};
+        }
+      }
+      const localState = hot ? (
+        // use ref() to unwrap refs inside state TODO: check if this is still necessary
+        vue.toRefs(vue.ref(state ? state() : {}).value)
+      ) : vue.toRefs(pinia.state.value[id]);
+      return assign(localState, actions, Object.keys(getters || {}).reduce((computedGetters, name) => {
+        if (name in localState) {
+          console.warn(`[🍍]: A getter cannot have the same name as another state property. Rename one of them. Found with "${name}" in store "${id}".`);
+        }
+        computedGetters[name] = vue.markRaw(vue.computed(() => {
+          setActivePinia(pinia);
+          const store2 = pinia._s.get(id);
+          return getters[name].call(store2, store2);
+        }));
+        return computedGetters;
+      }, {}));
+    }
+    store = createSetupStore(id, setup, options, pinia, hot, true);
+    return store;
+  }
+  function createSetupStore($id, setup, options = {}, pinia, hot, isOptionsStore) {
+    let scope;
+    const optionsForPlugin = assign({ actions: {} }, options);
+    if (!pinia._e.active) {
+      throw new Error("Pinia destroyed");
+    }
+    const $subscribeOptions = {
+      deep: true
+      // flush: 'post',
+    };
+    {
+      $subscribeOptions.onTrigger = (event) => {
+        if (isListening) {
+          debuggerEvents = event;
+        } else if (isListening == false && !store._hotUpdating) {
+          if (Array.isArray(debuggerEvents)) {
+            debuggerEvents.push(event);
+          } else {
+            console.error("🍍 debuggerEvents should be an array. This is most likely an internal Pinia bug.");
+          }
+        }
+      };
+    }
+    let isListening;
+    let isSyncListening;
+    let subscriptions = [];
+    let actionSubscriptions = [];
+    let debuggerEvents;
+    const initialState = pinia.state.value[$id];
+    if (!isOptionsStore && !initialState && !hot) {
+      {
+        pinia.state.value[$id] = {};
+      }
+    }
+    const hotState = vue.ref({});
+    let activeListener;
+    function $patch(partialStateOrMutator) {
+      let subscriptionMutation;
+      isListening = isSyncListening = false;
+      {
+        debuggerEvents = [];
+      }
+      if (typeof partialStateOrMutator === "function") {
+        partialStateOrMutator(pinia.state.value[$id]);
+        subscriptionMutation = {
+          type: MutationType.patchFunction,
+          storeId: $id,
+          events: debuggerEvents
+        };
+      } else {
+        mergeReactiveObjects(pinia.state.value[$id], partialStateOrMutator);
+        subscriptionMutation = {
+          type: MutationType.patchObject,
+          payload: partialStateOrMutator,
+          storeId: $id,
+          events: debuggerEvents
+        };
+      }
+      const myListenerId = activeListener = Symbol();
+      vue.nextTick().then(() => {
+        if (activeListener === myListenerId) {
+          isListening = true;
+        }
+      });
+      isSyncListening = true;
+      triggerSubscriptions(subscriptions, subscriptionMutation, pinia.state.value[$id]);
+    }
+    const $reset = isOptionsStore ? function $reset2() {
+      const { state } = options;
+      const newState = state ? state() : {};
+      this.$patch(($state) => {
+        assign($state, newState);
+      });
+    } : (
+      /* istanbul ignore next */
+      () => {
+        throw new Error(`🍍: Store "${$id}" is built using the setup syntax and does not implement $reset().`);
+      }
+    );
+    function $dispose() {
+      scope.stop();
+      subscriptions = [];
+      actionSubscriptions = [];
+      pinia._s.delete($id);
+    }
+    function wrapAction(name, action) {
+      return function() {
+        setActivePinia(pinia);
+        const args = Array.from(arguments);
+        const afterCallbackList = [];
+        const onErrorCallbackList = [];
+        function after(callback) {
+          afterCallbackList.push(callback);
+        }
+        function onError(callback) {
+          onErrorCallbackList.push(callback);
+        }
+        triggerSubscriptions(actionSubscriptions, {
+          args,
+          name,
+          store,
+          after,
+          onError
+        });
+        let ret;
+        try {
+          ret = action.apply(this && this.$id === $id ? this : store, args);
+        } catch (error) {
+          triggerSubscriptions(onErrorCallbackList, error);
+          throw error;
+        }
+        if (ret instanceof Promise) {
+          return ret.then((value) => {
+            triggerSubscriptions(afterCallbackList, value);
+            return value;
+          }).catch((error) => {
+            triggerSubscriptions(onErrorCallbackList, error);
+            return Promise.reject(error);
+          });
+        }
+        triggerSubscriptions(afterCallbackList, ret);
+        return ret;
+      };
+    }
+    const _hmrPayload = /* @__PURE__ */ vue.markRaw({
+      actions: {},
+      getters: {},
+      state: [],
+      hotState
+    });
+    const partialStore = {
+      _p: pinia,
+      // _s: scope,
+      $id,
+      $onAction: addSubscription.bind(null, actionSubscriptions),
+      $patch,
+      $reset,
+      $subscribe(callback, options2 = {}) {
+        const removeSubscription = addSubscription(subscriptions, callback, options2.detached, () => stopWatcher());
+        const stopWatcher = scope.run(() => vue.watch(() => pinia.state.value[$id], (state) => {
+          if (options2.flush === "sync" ? isSyncListening : isListening) {
+            callback({
+              storeId: $id,
+              type: MutationType.direct,
+              events: debuggerEvents
+            }, state);
+          }
+        }, assign({}, $subscribeOptions, options2)));
+        return removeSubscription;
+      },
+      $dispose
+    };
+    const store = vue.reactive(assign(
+      {
+        _hmrPayload,
+        _customProperties: vue.markRaw(/* @__PURE__ */ new Set())
+        // devtools custom properties
+      },
+      partialStore
+      // must be added later
+      // setupStore
+    ));
+    pinia._s.set($id, store);
+    const runWithContext = pinia._a && pinia._a.runWithContext || fallbackRunWithContext;
+    const setupStore = runWithContext(() => pinia._e.run(() => (scope = vue.effectScope()).run(setup)));
+    for (const key in setupStore) {
+      const prop = setupStore[key];
+      if (vue.isRef(prop) && !isComputed(prop) || vue.isReactive(prop)) {
+        if (hot) {
+          set(hotState.value, key, vue.toRef(setupStore, key));
+        } else if (!isOptionsStore) {
+          if (initialState && shouldHydrate(prop)) {
+            if (vue.isRef(prop)) {
+              prop.value = initialState[key];
+            } else {
+              mergeReactiveObjects(prop, initialState[key]);
+            }
+          }
+          {
+            pinia.state.value[$id][key] = prop;
+          }
+        }
+        {
+          _hmrPayload.state.push(key);
+        }
+      } else if (typeof prop === "function") {
+        const actionValue = hot ? prop : wrapAction(key, prop);
+        {
+          setupStore[key] = actionValue;
+        }
+        {
+          _hmrPayload.actions[key] = prop;
+        }
+        optionsForPlugin.actions[key] = prop;
+      } else {
+        if (isComputed(prop)) {
+          _hmrPayload.getters[key] = isOptionsStore ? (
+            // @ts-expect-error
+            options.getters[key]
+          ) : prop;
+          if (IS_CLIENT) {
+            const getters = setupStore._getters || // @ts-expect-error: same
+            (setupStore._getters = vue.markRaw([]));
+            getters.push(key);
+          }
+        }
+      }
+    }
+    {
+      assign(store, setupStore);
+      assign(vue.toRaw(store), setupStore);
+    }
+    Object.defineProperty(store, "$state", {
+      get: () => hot ? hotState.value : pinia.state.value[$id],
+      set: (state) => {
+        if (hot) {
+          throw new Error("cannot set hotState");
+        }
+        $patch(($state) => {
+          assign($state, state);
+        });
+      }
+    });
+    {
+      store._hotUpdate = vue.markRaw((newStore) => {
+        store._hotUpdating = true;
+        newStore._hmrPayload.state.forEach((stateKey) => {
+          if (stateKey in store.$state) {
+            const newStateTarget = newStore.$state[stateKey];
+            const oldStateSource = store.$state[stateKey];
+            if (typeof newStateTarget === "object" && isPlainObject(newStateTarget) && isPlainObject(oldStateSource)) {
+              patchObject(newStateTarget, oldStateSource);
+            } else {
+              newStore.$state[stateKey] = oldStateSource;
+            }
+          }
+          set(store, stateKey, vue.toRef(newStore.$state, stateKey));
+        });
+        Object.keys(store.$state).forEach((stateKey) => {
+          if (!(stateKey in newStore.$state)) {
+            del(store, stateKey);
+          }
+        });
+        isListening = false;
+        isSyncListening = false;
+        pinia.state.value[$id] = vue.toRef(newStore._hmrPayload, "hotState");
+        isSyncListening = true;
+        vue.nextTick().then(() => {
+          isListening = true;
+        });
+        for (const actionName in newStore._hmrPayload.actions) {
+          const action = newStore[actionName];
+          set(store, actionName, wrapAction(actionName, action));
+        }
+        for (const getterName in newStore._hmrPayload.getters) {
+          const getter = newStore._hmrPayload.getters[getterName];
+          const getterValue = isOptionsStore ? (
+            // special handling of options api
+            vue.computed(() => {
+              setActivePinia(pinia);
+              return getter.call(store, store);
+            })
+          ) : getter;
+          set(store, getterName, getterValue);
+        }
+        Object.keys(store._hmrPayload.getters).forEach((key) => {
+          if (!(key in newStore._hmrPayload.getters)) {
+            del(store, key);
+          }
+        });
+        Object.keys(store._hmrPayload.actions).forEach((key) => {
+          if (!(key in newStore._hmrPayload.actions)) {
+            del(store, key);
+          }
+        });
+        store._hmrPayload = newStore._hmrPayload;
+        store._getters = newStore._getters;
+        store._hotUpdating = false;
+      });
+    }
+    if (USE_DEVTOOLS) {
+      const nonEnumerable = {
+        writable: true,
+        configurable: true,
+        // avoid warning on devtools trying to display this property
+        enumerable: false
+      };
+      ["_p", "_hmrPayload", "_getters", "_customProperties"].forEach((p) => {
+        Object.defineProperty(store, p, assign({ value: store[p] }, nonEnumerable));
+      });
+    }
+    pinia._p.forEach((extender) => {
+      if (USE_DEVTOOLS) {
+        const extensions = scope.run(() => extender({
+          store,
+          app: pinia._a,
+          pinia,
+          options: optionsForPlugin
+        }));
+        Object.keys(extensions || {}).forEach((key) => store._customProperties.add(key));
+        assign(store, extensions);
+      } else {
+        assign(store, scope.run(() => extender({
+          store,
+          app: pinia._a,
+          pinia,
+          options: optionsForPlugin
+        })));
+      }
+    });
+    if (store.$state && typeof store.$state === "object" && typeof store.$state.constructor === "function" && !store.$state.constructor.toString().includes("[native code]")) {
+      console.warn(`[🍍]: The "state" must be a plain object. It cannot be
+	state: () => new MyClass()
+Found in store "${store.$id}".`);
+    }
+    if (initialState && isOptionsStore && options.hydrate) {
+      options.hydrate(store.$state, initialState);
+    }
+    isListening = true;
+    isSyncListening = true;
+    return store;
+  }
+  function defineStore(idOrOptions, setup, setupOptions) {
+    let id;
+    let options;
+    const isSetupStore = typeof setup === "function";
+    if (typeof idOrOptions === "string") {
+      id = idOrOptions;
+      options = isSetupStore ? setupOptions : setup;
+    } else {
+      options = idOrOptions;
+      id = idOrOptions.id;
+      if (typeof id !== "string") {
+        throw new Error(`[🍍]: "defineStore()" must be passed a store id as its first argument.`);
+      }
+    }
+    function useStore(pinia, hot) {
+      const hasContext = vue.hasInjectionContext();
+      pinia = // in test mode, ignore the argument provided as we can always retrieve a
+      // pinia instance with getActivePinia()
+      pinia || (hasContext ? vue.inject(piniaSymbol, null) : null);
+      if (pinia)
+        setActivePinia(pinia);
+      if (!activePinia) {
+        throw new Error(`[🍍]: "getActivePinia()" was called but there was no active Pinia. Are you trying to use a store before calling "app.use(pinia)"?
+See https://pinia.vuejs.org/core-concepts/outside-component-usage.html for help.
+This will fail in production.`);
+      }
+      pinia = activePinia;
+      if (!pinia._s.has(id)) {
+        if (isSetupStore) {
+          createSetupStore(id, setup, options, pinia);
+        } else {
+          createOptionsStore(id, options, pinia);
+        }
+        {
+          useStore._pinia = pinia;
+        }
+      }
+      const store = pinia._s.get(id);
+      if (hot) {
+        const hotId = "__hot:" + id;
+        const newStore = isSetupStore ? createSetupStore(hotId, setup, options, pinia, true) : createOptionsStore(hotId, assign({}, options), pinia, true);
+        hot._hotUpdate(newStore);
+        delete pinia.state.value[hotId];
+        pinia._s.delete(hotId);
+      }
+      if (IS_CLIENT) {
+        const currentInstance = vue.getCurrentInstance();
+        if (currentInstance && currentInstance.proxy && // avoid adding stores that are just built for hot module replacement
+        !hot) {
+          const vm = currentInstance.proxy;
+          const cache = "_pStores" in vm ? vm._pStores : vm._pStores = {};
+          cache[id] = store;
+        }
+      }
+      return store;
+    }
+    useStore.$id = id;
+    return useStore;
+  }
+  let mapStoreSuffix = "Store";
+  function setMapStoreSuffix(suffix) {
+    mapStoreSuffix = suffix;
+  }
+  function mapStores(...stores) {
+    if (Array.isArray(stores[0])) {
+      console.warn(`[🍍]: Directly pass all stores to "mapStores()" without putting them in an array:
+Replace
+	mapStores([useAuthStore, useCartStore])
+with
+	mapStores(useAuthStore, useCartStore)
+This will fail in production if not fixed.`);
+      stores = stores[0];
+    }
+    return stores.reduce((reduced, useStore) => {
+      reduced[useStore.$id + mapStoreSuffix] = function() {
+        return useStore(this.$pinia);
+      };
+      return reduced;
+    }, {});
+  }
+  function mapState(useStore, keysOrMapper) {
+    return Array.isArray(keysOrMapper) ? keysOrMapper.reduce((reduced, key) => {
+      reduced[key] = function() {
+        return useStore(this.$pinia)[key];
+      };
+      return reduced;
+    }, {}) : Object.keys(keysOrMapper).reduce((reduced, key) => {
+      reduced[key] = function() {
+        const store = useStore(this.$pinia);
+        const storeKey = keysOrMapper[key];
+        return typeof storeKey === "function" ? storeKey.call(this, store) : store[storeKey];
+      };
+      return reduced;
+    }, {});
+  }
+  const mapGetters = mapState;
+  function mapActions(useStore, keysOrMapper) {
+    return Array.isArray(keysOrMapper) ? keysOrMapper.reduce((reduced, key) => {
+      reduced[key] = function(...args) {
+        return useStore(this.$pinia)[key](...args);
+      };
+      return reduced;
+    }, {}) : Object.keys(keysOrMapper).reduce((reduced, key) => {
+      reduced[key] = function(...args) {
+        return useStore(this.$pinia)[keysOrMapper[key]](...args);
+      };
+      return reduced;
+    }, {});
+  }
+  function mapWritableState(useStore, keysOrMapper) {
+    return Array.isArray(keysOrMapper) ? keysOrMapper.reduce((reduced, key) => {
+      reduced[key] = {
+        get() {
+          return useStore(this.$pinia)[key];
+        },
+        set(value) {
+          return useStore(this.$pinia)[key] = value;
+        }
+      };
+      return reduced;
+    }, {}) : Object.keys(keysOrMapper).reduce((reduced, key) => {
+      reduced[key] = {
+        get() {
+          return useStore(this.$pinia)[keysOrMapper[key]];
+        },
+        set(value) {
+          return useStore(this.$pinia)[keysOrMapper[key]] = value;
+        }
+      };
+      return reduced;
+    }, {});
+  }
+  function storeToRefs(store) {
+    {
+      store = vue.toRaw(store);
+      const refs = {};
+      for (const key in store) {
+        const value = store[key];
+        if (vue.isRef(value) || vue.isReactive(value)) {
+          refs[key] = // ---
+          vue.toRef(store, key);
+        }
+      }
+      return refs;
+    }
+  }
+  const PiniaVuePlugin = function(_Vue) {
+    _Vue.mixin({
+      beforeCreate() {
+        const options = this.$options;
+        if (options.pinia) {
+          const pinia = options.pinia;
+          if (!this._provided) {
+            const provideCache = {};
+            Object.defineProperty(this, "_provided", {
+              get: () => provideCache,
+              set: (v) => Object.assign(provideCache, v)
+            });
+          }
+          this._provided[piniaSymbol] = pinia;
+          if (!this.$pinia) {
+            this.$pinia = pinia;
+          }
+          pinia._a = this;
+          if (IS_CLIENT) {
+            setActivePinia(pinia);
+          }
+          if (USE_DEVTOOLS) {
+            registerPiniaDevtools(pinia._a, pinia);
+          }
+        } else if (!this.$pinia && options.parent && options.parent.$pinia) {
+          this.$pinia = options.parent.$pinia;
+        }
+      },
+      destroyed() {
+        delete this._pStores;
+      }
+    });
+  };
+  const Pinia = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    get MutationType() {
+      return MutationType;
+    },
+    PiniaVuePlugin,
+    acceptHMRUpdate,
+    createPinia,
+    defineStore,
+    getActivePinia,
+    mapActions,
+    mapGetters,
+    mapState,
+    mapStores,
+    mapWritableState,
+    setActivePinia,
+    setMapStoreSuffix,
+    skipHydrate,
+    storeToRefs
+  }, Symbol.toStringTag, { value: "Module" }));
+  const TODO_SOURCE = {
+    CALL: "CALL",
+    CUSTOMER: "CUSTOMER",
+    CONVERSATION: "CONVERSATION",
+    CHAT_MESSAGE: "CHAT_MESSAGE"
+  };
+  const SYSTEM_CONFIG = {
+    SOURCE_PARAM: "Desktop-RTC",
+    // Nguồn thiết bị
+    MODULE_TYPE: "TODO"
+    // Loại module
+  };
+  const DEFAULT_VALUES = {
+    STRING: "",
+    PLUGIN_TYPE: "",
+    GROUP_ID: "",
+    TRANS_ID: "",
+    ASSIGNEE_ID: "",
+    CUSTOMER_CODE: "",
+    PHONE_PLACEHOLDER: "072836272322"
+    // Số điện thoại giả lập (nếu cần giữ logic cũ)
+  };
+  const EDITOR_CONFIG = {
+    DEFAULT_COLOR: "#000000",
+    TRANSPARENT: "transparent",
+    HEADER_NORMAL: "Normal"
+  };
+  const systemLogin = (username, password) => {
+    return new Promise((resolve, reject) => {
       uni.request({
-        url: options.url,
-        method: options.method || "GET",
-        data: options.data || {},
-        header: {
-          "Authorization": `Bearer ${finalToken}`,
-          // Luôn gửi kèm Token
-          "Content-Type": "application/json",
-          ...options.header
+        url: "https://api-staging.vbot.vn/v1.0/token",
+        method: "POST",
+        header: { "Content-Type": "application/x-www-form-urlencoded" },
+        data: {
+          username,
+          password,
+          grant_type: "password",
+          type_account: 0,
+          // [SỬA] Thay thế 'Desktop-RTC'
+          source: SYSTEM_CONFIG.SOURCE_PARAM
         },
         success: (res) => {
-          if (res.statusCode === 200) {
-            resolve(res.data.data);
+          if (res.statusCode === 200 && res.data.access_token) {
+            resolve(res.data);
           } else {
             reject(res.data);
           }
         },
-        fail: (err) => {
-          reject(err);
-        }
+        fail: (err) => reject(err)
+      });
+    });
+  };
+  const getTodoToken = (rootToken, projectCode, uid) => {
+    return new Promise((resolve, reject) => {
+      uni.request({
+        url: `https://api-staging.vbot.vn/v1.0/api/module-crm/token`,
+        method: "GET",
+        data: {
+          projectCode,
+          uid,
+          // [SỬA] Thay thế cứng bằng Enum
+          type: SYSTEM_CONFIG.MODULE_TYPE,
+          // 'TODO'
+          source: SYSTEM_CONFIG.SOURCE_PARAM
+          // 'Desktop-RTC'
+        },
+        header: {
+          "Authorization": `Bearer ${rootToken}`
+        },
+        success: (res) => {
+          if (res.data && res.data.data && res.data.data.token) {
+            resolve(res.data.data.token);
+          } else {
+            reject(res.data);
+          }
+        },
+        fail: (err) => reject(err)
       });
     });
   };
   const PROJECT_CODE = "PR202511170947436134";
   const UID = "77b7675d29d74cafa23771e46881db7c";
+  const useAuthStore = defineStore("auth", {
+    // 1. STATE: Chứa dữ liệu (Giống data trong Vue)
+    state: () => ({
+      rootToken: uni.getStorageSync("vbot_root_token") || "",
+      todoToken: uni.getStorageSync("todo_access_token") || "",
+      uid: uni.getStorageSync("vbot_uid") || "",
+      projectCode: uni.getStorageSync("vbot_project_code") || "",
+      tokenExpiry: uni.getStorageSync("token_expiry_time") || 0
+    }),
+    // 2. GETTERS: Tính toán dữ liệu (Giống computed)
+    getters: {
+      isLoggedIn: (state) => !!state.todoToken,
+      // Kiểm tra xem token còn hạn không
+      isValidToken: (state) => {
+        const now2 = Date.now();
+        return state.todoToken && state.tokenExpiry && now2 < state.tokenExpiry;
+      }
+    },
+    // 3. ACTIONS: Xử lý logic (Giống methods)
+    actions: {
+      // Hàm này dùng để lưu cả vào State lẫn Storage (giữ đồng bộ)
+      setAuthData(data) {
+        if (data.rootToken) {
+          this.rootToken = data.rootToken;
+          uni.setStorageSync("vbot_root_token", data.rootToken);
+        }
+        if (data.uid) {
+          this.uid = data.uid;
+          uni.setStorageSync("vbot_uid", data.uid);
+        }
+        if (data.projectCode) {
+          this.projectCode = data.projectCode;
+          uni.setStorageSync("vbot_project_code", data.projectCode);
+        }
+        if (data.todoToken) {
+          this.todoToken = data.todoToken;
+          uni.setStorageSync("todo_access_token", data.todoToken);
+          const expiresIn = 3600 * 1e3;
+          this.tokenExpiry = Date.now() + expiresIn;
+          uni.setStorageSync("token_expiry_time", this.tokenExpiry);
+        }
+      },
+      // Logic đổi Root Token lấy Todo Token
+      async exchangeForTodoToken() {
+        try {
+          formatAppLog("log", "at stores/auth.js:55", "🔄 Store: Đang đổi Token Todo...");
+          const todoToken = await getTodoToken(this.rootToken, this.projectCode, this.uid);
+          this.setAuthData({ todoToken });
+          formatAppLog("log", "at stores/auth.js:58", "✅ Store: Đã có Token Todo mới.");
+        } catch (error) {
+          formatAppLog("error", "at stores/auth.js:60", "❌ Store: Lỗi đổi token:", error);
+          throw error;
+        }
+      },
+      // Logic đăng nhập Dev (dùng cho localhost)
+      async loginDevMode() {
+        const devUser = "647890427";
+        const devPass = "53496785941d8dc2f5aa3e98e753eb3d0780de9fda3d9ac1761c47eaae28ae39";
+        const devUid = "77b7675d29d74cafa23771e46881db7c";
+        const devProject = "PR202511170947436134";
+        try {
+          formatAppLog("log", "at stores/auth.js:78", "🛠 Store: Đang đăng nhập Dev...");
+          const loginData = await systemLogin(devUser, devPass);
+          this.setAuthData({
+            rootToken: loginData.access_token,
+            uid: devUid,
+            projectCode: devProject
+          });
+          await this.exchangeForTodoToken();
+        } catch (error) {
+          formatAppLog("error", "at stores/auth.js:91", "❌ Store: Đăng nhập Dev thất bại", error);
+        }
+      },
+      // --- HÀM CHÍNH: App.vue sẽ gọi hàm này ---
+      async initialize(options) {
+        formatAppLog("log", "at stores/auth.js:97", "🚀 Store: Khởi tạo Auth...");
+        if (options && options.query && (options.query.token || options.query.access_token)) {
+          formatAppLog("log", "at stores/auth.js:101", ">> Mode: Production (URL Detect)");
+          const rootToken = options.query.token || options.query.access_token;
+          const uid = options.query.uid;
+          const projectCode = options.query.projectCode;
+          this.setAuthData({ rootToken, uid, projectCode });
+          await this.exchangeForTodoToken();
+          return;
+        }
+        if (this.isValidToken) {
+          formatAppLog("log", "at stores/auth.js:116", ">> Token cũ còn hạn, không cần làm gì.");
+          return;
+        }
+        formatAppLog("log", "at stores/auth.js:121", ">> Mode: Dev / Expired Token");
+        await this.loginDevMode();
+      },
+      logout() {
+        formatAppLog("log", "at stores/auth.js:125", "👋 Store: Đăng xuất, xóa Token...");
+        this.rootToken = "";
+        this.todoToken = "";
+        this.tokenExpiry = 0;
+        uni.removeStorageSync("todo_access_token");
+        uni.removeStorageSync("token_expiry_time");
+        uni.removeStorageSync("vbot_root_token");
+      }
+    }
+  });
+  const request = async (options) => {
+    const authStore = useAuthStore();
+    const token = authStore.todoToken || authStore.rootToken;
+    const headers = {
+      "Content-Type": "application/json",
+      ...options.header
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    return new Promise((resolve, reject) => {
+      uni.request({
+        url: options.url,
+        method: options.method || "GET",
+        data: options.data || {},
+        header: headers,
+        success: async (res) => {
+          if (res.statusCode === 200) {
+            resolve(res.data.data);
+            return;
+          }
+          if (res.statusCode === 401) {
+            formatAppLog("warn", "at utils/request.js:41", `⚠️ API 401: Token hết hạn tại ${options.url}`);
+            if (options._isRetry) {
+              formatAppLog("error", "at utils/request.js:46", "❌ Refresh Token cũng thất bại -> Logout.");
+              authStore.logout();
+              reject(res.data);
+              return;
+            }
+            try {
+              await authStore.exchangeForTodoToken();
+              formatAppLog("log", "at utils/request.js:57", "🔄 Đã Refresh Token -> Đang gọi lại API cũ...");
+              const retryResult = await request({
+                ...options,
+                _isRetry: true
+              });
+              resolve(retryResult);
+            } catch (err) {
+              authStore.logout();
+              reject(err);
+            }
+            return;
+          }
+          formatAppLog("error", "at utils/request.js:78", `[API Error ${res.statusCode}]`, res.data);
+          reject(res.data);
+        },
+        fail: (err) => {
+          formatAppLog("error", "at utils/request.js:86", "[Network Error]", err);
+          uni.showToast({ title: "Không có kết nối mạng", icon: "none" });
+          reject(err);
+        }
+      });
+    });
+  };
   const TODO_STATUS = {
     NEW: "TO_DO",
     IN_PROGRESS: "IN_PROGRESS",
@@ -210,7 +2030,13 @@ if (uni.restoreGlobal) {
     const assigneeOptions = ["Tất cả", "User 1", "User 2"];
     const assigneeIndex = vue.ref(0);
     const sourceOptions = ["Tất cả", "CALL", "CUSTOMER", "CONVERSATION", "CHAT_MESSAGE"];
-    const sourceValues = ["", "CALL", "CUSTOMER", "CONVERSATION", "CHAT_MESSAGE"];
+    const sourceValues = [
+      "",
+      TODO_SOURCE.CALL,
+      TODO_SOURCE.CUSTOMER,
+      TODO_SOURCE.CONVERSATION,
+      TODO_SOURCE.CHAT_MESSAGE
+    ];
     const sourceIndex = vue.ref(0);
     const filter = vue.ref({
       title: "",
@@ -253,7 +2079,7 @@ if (uni.restoreGlobal) {
         todos.value = listData || [];
         totalItems.value = countData || 0;
       } catch (error) {
-        formatAppLog("error", "at controllers/list_todo.js:91", error);
+        formatAppLog("error", "at controllers/list_todo.js:97", error);
         uni.showToast({ title: "Lỗi tải dữ liệu", icon: "none" });
       } finally {
         isLoading.value = false;
@@ -289,7 +2115,7 @@ if (uni.restoreGlobal) {
         itemToDelete.value = null;
         getTodoList();
       } catch (error) {
-        formatAppLog("error", "at controllers/list_todo.js:125", "Delete Error:", error);
+        formatAppLog("error", "at controllers/list_todo.js:131", "Delete Error:", error);
         uni.showToast({ title: "Xóa thất bại", icon: "none" });
       }
     };
@@ -400,7 +2226,7 @@ if (uni.restoreGlobal) {
     }
     return target;
   };
-  const _sfc_main$3 = {
+  const _sfc_main$5 = {
     __name: "list_todo",
     setup(__props, { expose: __expose }) {
       __expose();
@@ -451,7 +2277,7 @@ if (uni.restoreGlobal) {
       return __returned__;
     }
   };
-  function _sfc_render$2(_ctx, _cache, $props, $setup, $data, $options) {
+  function _sfc_render$4(_ctx, _cache, $props, $setup, $data, $options) {
     var _a;
     return vue.openBlock(), vue.createElementBlock("view", { class: "container" }, [
       vue.createElementVNode("view", { class: "header" }, [
@@ -874,7 +2700,7 @@ if (uni.restoreGlobal) {
       ])) : vue.createCommentVNode("v-if", true)
     ]);
   }
-  const PagesTodoListTodo = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["render", _sfc_render$2], ["__scopeId", "data-v-1b4e60ea"], ["__file", "D:/uni_app/vbot_todo/pages/todo/list_todo.vue"]]);
+  const PagesTodoListTodo = /* @__PURE__ */ _export_sfc(_sfc_main$5, [["render", _sfc_render$4], ["__scopeId", "data-v-1b4e60ea"], ["__file", "D:/uni_app/vbot_todo/pages/todo/list_todo.vue"]]);
   const dateToTimestamp = (dateStr) => {
     if (!dateStr)
       return -1;
@@ -886,26 +2712,27 @@ if (uni.restoreGlobal) {
     const fullNotifyDateTime = `${form.notifyDate} ${form.notifyTime || "00:00"}`;
     const fullDueDate = form.dueDate;
     return {
-      // 1. Các trường Text cơ bản
       title: form.name,
-      description: form.desc || "",
-      // 2. Các trường Config / System
+      description: form.desc || DEFAULT_VALUES.STRING,
       projectCode: config.projectCode,
       createdBy: config.uid,
-      status: "TO_DO",
-      // 3. Enum & Loại
-      links: "CALL",
-      pluginType: "",
-      // 4. Các trường Optional
-      customerCode: form.customer || "",
-      assigneeId: form.assignee || "",
-      groupId: "",
-      transId: "",
+      // [SỬA] Dùng Constant có sẵn
+      status: TODO_STATUS.NEW,
+      // Thay cho 'TO_DO'
+      // [SỬA] Dùng Enum
+      links: TODO_SOURCE.CALL,
+      // Thay cho 'CALL'
+      pluginType: DEFAULT_VALUES.PLUGIN_TYPE,
+      // [SỬA] Dùng Default Values
+      customerCode: form.customer || DEFAULT_VALUES.CUSTOMER_CODE,
+      assigneeId: form.assignee || DEFAULT_VALUES.ASSIGNEE_ID,
+      groupId: DEFAULT_VALUES.GROUP_ID,
+      transId: DEFAULT_VALUES.TRANS_ID,
+      // Các trường legacy (nếu chưa clear được thì để tạm hoặc tạo const)
       tagCodes: "",
       groupMemberUid: "",
-      files: "",
-      phone: "",
-      // 5. Các trường Thời gian (Đã xử lý ghép chuỗi ở trên)
+      files: DEFAULT_VALUES.STRING,
+      phone: DEFAULT_VALUES.PHONE_PLACEHOLDER,
       dueDate: dateToTimestamp(fullDueDate),
       notificationReceivedAt: dateToTimestamp(fullNotifyDateTime)
     };
@@ -920,19 +2747,6 @@ if (uni.restoreGlobal) {
       const d = /* @__PURE__ */ new Date();
       return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
     };
-    const formatDateDisplay = (isoStr) => {
-      if (!isoStr)
-        return "";
-      try {
-        if (isoStr.includes("-")) {
-          const [y, m, d] = isoStr.split("-");
-          return `${d}/${m}/${y}`;
-        }
-        return isoStr;
-      } catch (e) {
-        return isoStr;
-      }
-    };
     const loading = vue.ref(false);
     const form = vue.ref({
       name: "",
@@ -940,15 +2754,9 @@ if (uni.restoreGlobal) {
       customer: "",
       assignee: "",
       dueDate: getTodayISO(),
-      // Chỉ ngày (YYYY-MM-DD)
       notifyDate: getTodayISO(),
-      // Ngày thông báo (YYYY-MM-DD)
       notifyTime: getCurrentTime()
-      // Giờ thông báo (HH:mm) -> THÊM MỚI
     });
-    const bindDateChange = (e, field) => {
-      form.value[field] = e.detail.value;
-    };
     const goBack = () => uni.navigateBack();
     const submitForm = async () => {
       if (!form.value.name || !form.value.name.trim()) {
@@ -967,228 +2775,616 @@ if (uni.restoreGlobal) {
           uni.navigateBack();
         }, 1500);
       } catch (error) {
-        formatAppLog("error", "at controllers/create_todo.js:73", "❌ Create Error:", error);
+        formatAppLog("error", "at controllers/create_todo.js:55", "❌ Create Error:", error);
         uni.showToast({ title: "Lỗi: " + ((error == null ? void 0 : error.message) || "Thất bại"), icon: "none" });
       } finally {
         loading.value = false;
       }
     };
-    const editorCtx = vue.ref(null);
-    const formats = vue.ref({});
-    const showLinkPopup = vue.ref(false);
-    const linkUrl = vue.ref("");
-    const linkText = vue.ref("");
-    const canInsertLink = vue.ref(false);
-    const isLinkSelected = vue.ref(false);
-    const focusLinkInput = vue.ref(false);
-    const showColorPopup = vue.ref(false);
-    const colorType = vue.ref("color");
-    const currentColor = vue.ref("#000000");
-    const currentBgColor = vue.ref("transparent");
-    const currentHeader = vue.ref("Normal");
-    const colorList = ["#000000", "#424242", "#666666", "#999999", "#B7B7B7", "#CCCCCC", "#D9D9D9", "#EFEFEF", "#F3F3F3", "#FFFFFF", "#980000", "#FF0000", "#FF9900", "#FFFF00", "#00FF00", "#00FFFF", "#4A86E8", "#0000FF", "#9900FF", "#FF00FF", "#CC4125", "#E06666", "#F6B26B", "#FFD966", "#93C47D", "#76A5AF", "#6D9EEB", "#6FA8DC", "#8E7CC3", "#C27BA0", "#A61C00", "#CC0000", "#E69138", "#F1C232", "#6AA84F", "#45818E", "#3C78D8", "#3D85C6", "#674EA7", "#A64D79"];
-    const headerOptions = [{ label: "Normal", value: null }, { label: "H1", value: 1 }, { label: "H2", value: 2 }, { label: "H3", value: 3 }];
-    const alignIcon = vue.computed(() => formats.value.align === "center" ? "https://img.icons8.com/ios/50/666666/align-center.png" : formats.value.align === "right" ? "https://img.icons8.com/ios/50/666666/align-right.png" : "https://img.icons8.com/ios/50/666666/align-left.png");
-    const isPopupOpen = vue.computed(() => showLinkPopup.value || showColorPopup.value);
-    const onEditorReady = () => {
-      uni.createSelectorQuery().select("#editor").context((res) => {
-        editorCtx.value = res.context;
-        if (form.value.desc)
-          editorCtx.value.setContents({ html: form.value.desc });
-      }).exec();
-    };
-    const onEditorInput = (e) => {
-      form.value.desc = e.detail.html;
-    };
-    const onStatusChange = (e) => {
-      formats.value = e.detail;
-      if (e.detail.color)
-        currentColor.value = e.detail.color;
-      if (e.detail.backgroundColor)
-        currentBgColor.value = e.detail.backgroundColor;
-      if (e.detail.hasOwnProperty("link")) {
-        isLinkSelected.value = true;
-        linkUrl.value = e.detail.link || "";
-      } else {
-        isLinkSelected.value = false;
-        linkUrl.value = "";
-      }
-      if (editorCtx.value) {
-        editorCtx.value.getSelectionText({
-          success: (res) => {
-            if (res.text && res.text.length > 0) {
-              canInsertLink.value = true;
-              if (!isLinkSelected.value)
-                linkText.value = res.text;
-            } else {
-              canInsertLink.value = false;
-              if (!isLinkSelected.value)
-                linkText.value = "";
-            }
-          },
-          fail: () => {
-            canInsertLink.value = false;
-          }
-        });
-      }
-    };
-    const handleLinkBtn = () => {
-      if (isLinkSelected.value || canInsertLink.value) {
-        if (canInsertLink.value && !isLinkSelected.value)
-          linkUrl.value = "";
-        showLinkPopup.value = true;
-        vue.nextTick(() => {
-          focusLinkInput.value = true;
-        });
-      } else {
-        uni.showToast({ title: "Bôi đen chữ để chèn Link", icon: "none" });
-      }
-    };
-    const closeLinkPopup = () => {
-      showLinkPopup.value = false;
-      focusLinkInput.value = false;
-    };
-    const confirmLink = () => {
-      const url = linkUrl.value;
-      const text = linkText.value;
-      closeLinkPopup();
-      setTimeout(() => {
-        if (url && text) {
-          editorCtx.value.insertText({ text });
-          editorCtx.value.format("link", url);
-        }
-      }, 300);
-    };
-    const removeLink = () => {
-      closeLinkPopup();
-      setTimeout(() => {
-        editorCtx.value.format("link", null);
-      }, 300);
-    };
-    const format = (name, value) => {
-      if (editorCtx.value)
-        editorCtx.value.format(name, value);
-    };
-    const onHeaderChange = (e) => {
-      const sel = headerOptions[e.detail.value];
-      currentHeader.value = sel.label;
-      format("header", sel.value);
-    };
-    const toggleAlign = () => {
-      let a = "center";
-      if (formats.value.align === "center")
-        a = "right";
-      else if (formats.value.align === "right")
-        a = "left";
-      format("align", a);
-    };
-    const openColorPicker = (type) => {
-      colorType.value = type;
-      showColorPopup.value = true;
-    };
-    const closeColorPopup = () => {
-      showColorPopup.value = false;
-    };
-    const selectColor = (color) => {
-      if (colorType.value === "color") {
-        currentColor.value = color || "#000000";
-        format("color", color);
-      } else {
-        currentBgColor.value = color || "transparent";
-        format("backgroundColor", color);
-      }
-      closeColorPopup();
-    };
-    const insertImage = () => {
-      uni.chooseImage({ count: 1, success: (r) => editorCtx.value.insertImage({ src: r.tempFilePaths[0], width: "80%" }) });
-    };
-    const insertVideo = () => {
-      uni.chooseVideo({ count: 1, success: (r) => editorCtx.value.insertVideo({ src: r.tempFilePath, width: "80%" }) });
-    };
     return {
       loading,
       form,
-      formatDateDisplay,
-      bindDateChange,
       goBack,
-      submitForm,
-      formats,
-      showLinkPopup,
-      linkUrl,
-      linkText,
-      canInsertLink,
-      isLinkSelected,
-      focusLinkInput,
-      showColorPopup,
-      currentColor,
-      currentBgColor,
-      currentHeader,
-      colorList,
-      headerOptions,
-      alignIcon,
-      isPopupOpen,
-      onEditorReady,
-      onEditorInput,
-      onStatusChange,
-      handleLinkBtn,
-      closeLinkPopup,
-      confirmLink,
-      removeLink,
-      format,
-      onHeaderChange,
-      toggleAlign,
-      openColorPicker,
-      closeColorPopup,
-      selectColor,
-      insertImage,
-      insertVideo
+      submitForm
     };
   };
+  const _sfc_main$4 = {
+    __name: "TodoEditor",
+    props: {
+      modelValue: { type: String, default: "" }
+      // v-model binding
+    },
+    emits: ["update:modelValue"],
+    setup(__props, { expose: __expose, emit: __emit }) {
+      __expose();
+      const props = __props;
+      const emit = __emit;
+      const editorCtx = vue.ref(null);
+      const formats = vue.ref({});
+      const instance = vue.getCurrentInstance();
+      const showLinkPopup = vue.ref(false);
+      const linkUrl = vue.ref("");
+      const linkText = vue.ref("");
+      const canInsertLink = vue.ref(false);
+      const isLinkSelected = vue.ref(false);
+      const focusLinkInput = vue.ref(false);
+      const showColorPopup = vue.ref(false);
+      const colorType = vue.ref("color");
+      const currentColor = vue.ref(EDITOR_CONFIG.DEFAULT_COLOR);
+      const currentBgColor = vue.ref(EDITOR_CONFIG.TRANSPARENT);
+      const currentHeader = vue.ref(EDITOR_CONFIG.HEADER_NORMAL);
+      const colorList = ["#000000", "#424242", "#666666", "#999999", "#B7B7B7", "#CCCCCC", "#D9D9D9", "#EFEFEF", "#F3F3F3", "#FFFFFF", "#980000", "#FF0000", "#FF9900", "#FFFF00", "#00FF00", "#00FFFF", "#4A86E8", "#0000FF", "#9900FF", "#FF00FF", "#CC4125", "#E06666", "#F6B26B", "#FFD966", "#93C47D", "#76A5AF", "#6D9EEB", "#6FA8DC", "#8E7CC3", "#C27BA0", "#A61C00", "#CC0000", "#E69138", "#F1C232", "#6AA84F", "#45818E", "#3C78D8", "#3D85C6", "#674EA7", "#A64D79"];
+      const headerOptions = [{ label: "Normal", value: null }, { label: "H1", value: 1 }, { label: "H2", value: 2 }, { label: "H3", value: 3 }];
+      const alignIcon = vue.computed(() => formats.value.align === "center" ? "https://img.icons8.com/ios/50/666666/align-center.png" : formats.value.align === "right" ? "https://img.icons8.com/ios/50/666666/align-right.png" : "https://img.icons8.com/ios/50/666666/align-left.png");
+      const isPopupOpen = vue.computed(() => showLinkPopup.value || showColorPopup.value);
+      const onEditorReady = () => {
+        uni.createSelectorQuery().in(instance.proxy).select("#editor").context((res) => {
+          editorCtx.value = res.context;
+          if (props.modelValue) {
+            editorCtx.value.setContents({ html: props.modelValue });
+          }
+        }).exec();
+      };
+      const onEditorInput = (e) => {
+        emit("update:modelValue", e.detail.html);
+      };
+      const onStatusChange = (e) => {
+        formats.value = e.detail;
+        if (e.detail.color)
+          currentColor.value = e.detail.color;
+        if (e.detail.backgroundColor)
+          currentBgColor.value = e.detail.backgroundColor;
+        if (e.detail.hasOwnProperty("link")) {
+          isLinkSelected.value = true;
+          linkUrl.value = e.detail.link || "";
+        } else {
+          isLinkSelected.value = false;
+          linkUrl.value = "";
+        }
+        if (editorCtx.value) {
+          editorCtx.value.getSelectionText({
+            success: (res) => {
+              if (res.text && res.text.length > 0) {
+                canInsertLink.value = true;
+                if (!isLinkSelected.value)
+                  linkText.value = res.text;
+              } else {
+                canInsertLink.value = false;
+                if (!isLinkSelected.value)
+                  linkText.value = "";
+              }
+            },
+            fail: () => {
+              canInsertLink.value = false;
+            }
+          });
+        }
+      };
+      const format = (name, value) => {
+        if (editorCtx.value)
+          editorCtx.value.format(name, value);
+      };
+      const handleLinkBtn = () => {
+        if (isLinkSelected.value || canInsertLink.value) {
+          if (canInsertLink.value && !isLinkSelected.value)
+            linkUrl.value = "";
+          showLinkPopup.value = true;
+          vue.nextTick(() => {
+            focusLinkInput.value = true;
+          });
+        } else {
+          uni.showToast({ title: "Bôi đen chữ để chèn Link", icon: "none" });
+        }
+      };
+      const closeLinkPopup = () => {
+        showLinkPopup.value = false;
+        focusLinkInput.value = false;
+      };
+      const confirmLink = () => {
+        const url = linkUrl.value;
+        const text = linkText.value;
+        closeLinkPopup();
+        setTimeout(() => {
+          if (url && text) {
+            editorCtx.value.insertText({ text });
+            editorCtx.value.format("link", url);
+          }
+        }, 300);
+      };
+      const removeLink = () => {
+        closeLinkPopup();
+        setTimeout(() => {
+          editorCtx.value.format("link", null);
+        }, 300);
+      };
+      const onHeaderChange = (e) => {
+        const sel = headerOptions[e.detail.value];
+        currentHeader.value = sel.label;
+        format("header", sel.value);
+      };
+      const toggleAlign = () => {
+        let a = "center";
+        if (formats.value.align === "center")
+          a = "right";
+        else if (formats.value.align === "right")
+          a = "left";
+        format("align", a);
+      };
+      const openColorPicker = (type) => {
+        colorType.value = type;
+        showColorPopup.value = true;
+      };
+      const closeColorPopup = () => {
+        showColorPopup.value = false;
+      };
+      const selectColor = (color) => {
+        if (colorType.value === "color") {
+          currentColor.value = color || EDITOR_CONFIG.DEFAULT_COLOR;
+          format("color", color);
+        } else {
+          currentBgColor.value = color || EDITOR_CONFIG.TRANSPARENT;
+          format("backgroundColor", color);
+        }
+        closeColorPopup();
+      };
+      const insertImage = () => {
+        uni.chooseImage({ count: 1, success: (r) => editorCtx.value.insertImage({ src: r.tempFilePaths[0], width: "80%" }) });
+      };
+      const insertVideo = () => {
+        uni.chooseVideo({ count: 1, success: (r) => editorCtx.value.insertVideo({ src: r.tempFilePath, width: "80%" }) });
+      };
+      const __returned__ = { props, emit, editorCtx, formats, instance, showLinkPopup, linkUrl, linkText, canInsertLink, isLinkSelected, focusLinkInput, showColorPopup, colorType, currentColor, currentBgColor, currentHeader, colorList, headerOptions, alignIcon, isPopupOpen, onEditorReady, onEditorInput, onStatusChange, format, handleLinkBtn, closeLinkPopup, confirmLink, removeLink, onHeaderChange, toggleAlign, openColorPicker, closeColorPopup, selectColor, insertImage, insertVideo, ref: vue.ref, computed: vue.computed, nextTick: vue.nextTick, getCurrentInstance: vue.getCurrentInstance, get EDITOR_CONFIG() {
+        return EDITOR_CONFIG;
+      } };
+      Object.defineProperty(__returned__, "__isScriptSetup", { enumerable: false, value: true });
+      return __returned__;
+    }
+  };
+  function _sfc_render$3(_ctx, _cache, $props, $setup, $data, $options) {
+    return vue.openBlock(), vue.createElementBlock("view", { class: "editor-wrapper" }, [
+      vue.createElementVNode("view", { class: "editor-label-row" }, [
+        vue.createElementVNode("view", { class: "item-left" }, [
+          vue.createElementVNode("image", {
+            src: "https://img.icons8.com/ios/50/666666/document--v1.png",
+            class: "item-icon"
+          }),
+          vue.createElementVNode("text", { class: "label-text" }, "Mô tả")
+        ])
+      ]),
+      vue.createElementVNode("view", { class: "toolbar" }, [
+        vue.createElementVNode("view", { class: "tool-row" }, [
+          vue.createElementVNode(
+            "view",
+            {
+              class: vue.normalizeClass(["tool-item", { "active": $setup.formats.bold }]),
+              onClick: _cache[0] || (_cache[0] = ($event) => $setup.format("bold"))
+            },
+            [
+              vue.createElementVNode("text", { class: "txt-icon bold" }, "B")
+            ],
+            2
+            /* CLASS */
+          ),
+          vue.createElementVNode(
+            "view",
+            {
+              class: vue.normalizeClass(["tool-item", { "active": $setup.formats.italic }]),
+              onClick: _cache[1] || (_cache[1] = ($event) => $setup.format("italic"))
+            },
+            [
+              vue.createElementVNode("text", { class: "txt-icon italic" }, "I")
+            ],
+            2
+            /* CLASS */
+          ),
+          vue.createElementVNode(
+            "view",
+            {
+              class: vue.normalizeClass(["tool-item", { "active": $setup.formats.underline }]),
+              onClick: _cache[2] || (_cache[2] = ($event) => $setup.format("underline"))
+            },
+            [
+              vue.createElementVNode("text", { class: "txt-icon underline" }, "U")
+            ],
+            2
+            /* CLASS */
+          ),
+          vue.createElementVNode(
+            "view",
+            {
+              class: vue.normalizeClass(["tool-item", { "active": $setup.formats.strike }]),
+              onClick: _cache[3] || (_cache[3] = ($event) => $setup.format("strike"))
+            },
+            [
+              vue.createElementVNode("text", { class: "txt-icon strike" }, "S")
+            ],
+            2
+            /* CLASS */
+          ),
+          vue.createElementVNode("view", { class: "tool-divider" }),
+          vue.createElementVNode("view", {
+            class: "tool-item",
+            onClick: _cache[4] || (_cache[4] = ($event) => $setup.format("list", "ordered"))
+          }, [
+            vue.createElementVNode("image", {
+              src: "https://img.icons8.com/ios/50/666666/numbered-list.png",
+              class: "img-tool"
+            })
+          ]),
+          vue.createElementVNode("view", {
+            class: "tool-item",
+            onClick: _cache[5] || (_cache[5] = ($event) => $setup.format("list", "bullet"))
+          }, [
+            vue.createElementVNode("image", {
+              src: "https://img.icons8.com/ios/50/666666/list.png",
+              class: "img-tool"
+            })
+          ]),
+          vue.createElementVNode(
+            "picker",
+            {
+              range: $setup.headerOptions,
+              "range-key": "label",
+              onChange: $setup.onHeaderChange,
+              class: "tool-picker"
+            },
+            [
+              vue.createElementVNode(
+                "view",
+                { class: "picker-label" },
+                vue.toDisplayString($setup.currentHeader) + " ▾",
+                1
+                /* TEXT */
+              )
+            ],
+            32
+            /* NEED_HYDRATION */
+          )
+        ]),
+        vue.createElementVNode("view", { class: "tool-row" }, [
+          vue.createElementVNode("view", {
+            class: "tool-item",
+            onClick: _cache[6] || (_cache[6] = ($event) => $setup.openColorPicker("color"))
+          }, [
+            vue.createElementVNode(
+              "text",
+              {
+                class: "txt-icon color-text",
+                style: vue.normalizeStyle({ color: $setup.currentColor })
+              },
+              "A",
+              4
+              /* STYLE */
+            ),
+            vue.createElementVNode(
+              "view",
+              {
+                class: "color-bar",
+                style: vue.normalizeStyle({ backgroundColor: $setup.currentColor })
+              },
+              null,
+              4
+              /* STYLE */
+            )
+          ]),
+          vue.createElementVNode("view", {
+            class: "tool-item",
+            onClick: _cache[7] || (_cache[7] = ($event) => $setup.openColorPicker("backgroundColor"))
+          }, [
+            vue.createElementVNode(
+              "text",
+              {
+                class: "txt-icon bg-text",
+                style: vue.normalizeStyle({ backgroundColor: $setup.currentBgColor })
+              },
+              "A",
+              4
+              /* STYLE */
+            )
+          ]),
+          vue.createElementVNode("view", { class: "tool-divider" }),
+          vue.createElementVNode("view", {
+            class: "tool-item",
+            onClick: $setup.toggleAlign
+          }, [
+            vue.createElementVNode("image", {
+              src: $setup.alignIcon,
+              class: "img-tool"
+            }, null, 8, ["src"])
+          ]),
+          vue.createElementVNode("view", { class: "tool-divider" }),
+          vue.createElementVNode(
+            "view",
+            {
+              class: vue.normalizeClass(["tool-item", { "active": $setup.isLinkSelected, "disabled": !$setup.canInsertLink && !$setup.isLinkSelected }]),
+              onClick: $setup.handleLinkBtn
+            },
+            [
+              vue.createElementVNode(
+                "image",
+                {
+                  src: "https://img.icons8.com/ios/50/666666/link--v1.png",
+                  class: "img-tool",
+                  style: vue.normalizeStyle({ opacity: $setup.canInsertLink || $setup.isLinkSelected ? 1 : 0.3 })
+                },
+                null,
+                4
+                /* STYLE */
+              )
+            ],
+            2
+            /* CLASS */
+          ),
+          vue.createElementVNode("view", {
+            class: "tool-item",
+            onClick: $setup.insertImage
+          }, [
+            vue.createElementVNode("image", {
+              src: "https://img.icons8.com/ios/50/666666/image.png",
+              class: "img-tool"
+            })
+          ]),
+          vue.createElementVNode("view", {
+            class: "tool-item",
+            onClick: $setup.insertVideo
+          }, [
+            vue.createElementVNode("image", {
+              src: "https://img.icons8.com/ios/50/666666/video-call.png",
+              class: "img-tool"
+            })
+          ])
+        ])
+      ]),
+      $setup.isPopupOpen ? (vue.openBlock(), vue.createElementBlock("view", {
+        key: 0,
+        class: "ql-container static-view"
+      }, [
+        vue.createElementVNode("rich-text", {
+          nodes: $props.modelValue || "<p style='color:#999'>Nhập mô tả...</p>"
+        }, null, 8, ["nodes"])
+      ])) : (vue.openBlock(), vue.createElementBlock(
+        "editor",
+        {
+          key: 1,
+          id: "editor",
+          class: "ql-container",
+          placeholder: "Nhập mô tả...",
+          "show-img-size": true,
+          "show-img-toolbar": true,
+          "show-img-resize": true,
+          onReady: $setup.onEditorReady,
+          onInput: $setup.onEditorInput,
+          onStatuschange: $setup.onStatusChange
+        },
+        null,
+        32
+        /* NEED_HYDRATION */
+      )),
+      $setup.showColorPopup ? (vue.openBlock(), vue.createElementBlock("view", {
+        key: 2,
+        class: "color-popup-overlay",
+        onClick: $setup.closeColorPopup
+      }, [
+        vue.createElementVNode("view", {
+          class: "color-popup",
+          onClick: _cache[9] || (_cache[9] = vue.withModifiers(() => {
+          }, ["stop"]))
+        }, [
+          vue.createElementVNode("text", { class: "popup-title" }, "Chọn màu"),
+          vue.createElementVNode("view", { class: "color-grid" }, [
+            (vue.openBlock(), vue.createElementBlock(
+              vue.Fragment,
+              null,
+              vue.renderList($setup.colorList, (c) => {
+                return vue.createElementVNode("view", {
+                  key: c,
+                  class: "color-cell",
+                  style: vue.normalizeStyle({ backgroundColor: c }),
+                  onClick: ($event) => $setup.selectColor(c)
+                }, null, 12, ["onClick"]);
+              }),
+              64
+              /* STABLE_FRAGMENT */
+            )),
+            vue.createElementVNode("view", {
+              class: "color-cell remove-color",
+              onClick: _cache[8] || (_cache[8] = ($event) => $setup.selectColor(null))
+            }, "✕")
+          ])
+        ])
+      ])) : vue.createCommentVNode("v-if", true),
+      $setup.showLinkPopup ? (vue.openBlock(), vue.createElementBlock("view", {
+        key: 3,
+        class: "link-popup-overlay",
+        onClick: $setup.closeLinkPopup
+      }, [
+        vue.createElementVNode("view", {
+          class: "link-popup",
+          onClick: _cache[12] || (_cache[12] = vue.withModifiers(() => {
+          }, ["stop"]))
+        }, [
+          vue.createElementVNode(
+            "text",
+            { class: "popup-title" },
+            vue.toDisplayString($setup.isLinkSelected ? "Chỉnh sửa liên kết" : "Chèn liên kết"),
+            1
+            /* TEXT */
+          ),
+          vue.createElementVNode("view", { class: "input-group" }, [
+            vue.createElementVNode("text", { class: "input-label" }, "Văn bản hiển thị:"),
+            vue.withDirectives(vue.createElementVNode(
+              "input",
+              {
+                class: "link-input",
+                "onUpdate:modelValue": _cache[10] || (_cache[10] = ($event) => $setup.linkText = $event),
+                placeholder: "Nhập văn bản..."
+              },
+              null,
+              512
+              /* NEED_PATCH */
+            ), [
+              [vue.vModelText, $setup.linkText]
+            ])
+          ]),
+          vue.createElementVNode("view", { class: "input-group" }, [
+            vue.createElementVNode("text", { class: "input-label" }, "Đường dẫn (URL):"),
+            vue.withDirectives(vue.createElementVNode("input", {
+              class: "link-input",
+              "onUpdate:modelValue": _cache[11] || (_cache[11] = ($event) => $setup.linkUrl = $event),
+              placeholder: "https://",
+              focus: $setup.focusLinkInput
+            }, null, 8, ["focus"]), [
+              [vue.vModelText, $setup.linkUrl]
+            ])
+          ]),
+          vue.createElementVNode("view", { class: "link-actions" }, [
+            $setup.isLinkSelected ? (vue.openBlock(), vue.createElementBlock("button", {
+              key: 0,
+              class: "link-btn remove",
+              onClick: $setup.removeLink
+            }, "Gỡ Link")) : vue.createCommentVNode("v-if", true),
+            vue.createElementVNode(
+              "button",
+              {
+                class: "link-btn cancel",
+                onClick: $setup.closeLinkPopup
+              },
+              vue.toDisplayString($setup.isLinkSelected ? "Hủy" : "Thoát"),
+              1
+              /* TEXT */
+            ),
+            vue.createElementVNode("button", {
+              class: "link-btn confirm",
+              onClick: $setup.confirmLink
+            }, "Lưu")
+          ])
+        ])
+      ])) : vue.createCommentVNode("v-if", true)
+    ]);
+  }
+  const TodoEditor = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["render", _sfc_render$3], ["__scopeId", "data-v-7d79903f"], ["__file", "D:/uni_app/vbot_todo/components/Todo/TodoEditor.vue"]]);
+  const _sfc_main$3 = {
+    __name: "TodoDatePicker",
+    props: {
+      dueDate: { type: String, default: "" },
+      notifyDate: { type: String, default: "" },
+      notifyTime: { type: String, default: "" }
+    },
+    emits: ["update:dueDate", "update:notifyDate", "update:notifyTime"],
+    setup(__props, { expose: __expose, emit: __emit }) {
+      __expose();
+      const props = __props;
+      const emit = __emit;
+      const onDateChange = (e, field) => {
+        emit(`update:${field}`, e.detail.value);
+      };
+      const formatDateDisplay = (isoStr) => {
+        if (!isoStr)
+          return "";
+        try {
+          if (isoStr.includes("-")) {
+            const [y, m, d] = isoStr.split("-");
+            return `${d}/${m}/${y}`;
+          }
+          return isoStr;
+        } catch (e) {
+          return isoStr;
+        }
+      };
+      const __returned__ = { props, emit, onDateChange, formatDateDisplay };
+      Object.defineProperty(__returned__, "__isScriptSetup", { enumerable: false, value: true });
+      return __returned__;
+    }
+  };
+  function _sfc_render$2(_ctx, _cache, $props, $setup, $data, $options) {
+    return vue.openBlock(), vue.createElementBlock("view", { class: "flat-item date-compound-block" }, [
+      vue.createElementVNode("view", { class: "item-left icon-top-aligned" }, [
+        vue.createElementVNode("image", {
+          src: "https://img.icons8.com/ios/50/666666/time.png",
+          class: "item-icon"
+        })
+      ]),
+      vue.createElementVNode("view", { class: "right-column" }, [
+        vue.createElementVNode("view", { class: "date-row" }, [
+          vue.createElementVNode("picker", {
+            mode: "date",
+            value: $props.dueDate,
+            onChange: _cache[0] || (_cache[0] = ($event) => $setup.onDateChange($event, "dueDate")),
+            class: "full-width-picker"
+          }, [
+            vue.createElementVNode(
+              "view",
+              {
+                class: vue.normalizeClass(["item-picker", { "placeholder-color": !$props.dueDate }])
+              },
+              [
+                vue.createElementVNode("text", { class: "picker-label" }, "Hết hạn:"),
+                vue.createTextVNode(
+                  " " + vue.toDisplayString($props.dueDate ? $setup.formatDateDisplay($props.dueDate) : "Chọn ngày"),
+                  1
+                  /* TEXT */
+                )
+              ],
+              2
+              /* CLASS */
+            )
+          ], 40, ["value"])
+        ]),
+        vue.createElementVNode("view", { class: "inner-divider" }),
+        vue.createElementVNode("view", { class: "date-row split-row" }, [
+          vue.createElementVNode("picker", {
+            mode: "date",
+            value: $props.notifyDate,
+            onChange: _cache[1] || (_cache[1] = ($event) => $setup.onDateChange($event, "notifyDate")),
+            class: "half-picker"
+          }, [
+            vue.createElementVNode(
+              "view",
+              {
+                class: vue.normalizeClass(["item-picker", { "placeholder-color": !$props.notifyDate }])
+              },
+              [
+                vue.createElementVNode("text", { class: "picker-label" }, "Thông báo:"),
+                vue.createTextVNode(
+                  " " + vue.toDisplayString($props.notifyDate ? $setup.formatDateDisplay($props.notifyDate) : "Ngày"),
+                  1
+                  /* TEXT */
+                )
+              ],
+              2
+              /* CLASS */
+            )
+          ], 40, ["value"]),
+          vue.createElementVNode("view", { class: "vertical-divider" }),
+          vue.createElementVNode("picker", {
+            mode: "time",
+            value: $props.notifyTime,
+            onChange: _cache[2] || (_cache[2] = ($event) => $setup.onDateChange($event, "notifyTime")),
+            class: "half-picker"
+          }, [
+            vue.createElementVNode(
+              "view",
+              {
+                class: vue.normalizeClass(["item-picker", { "placeholder-color": !$props.notifyTime }])
+              },
+              vue.toDisplayString($props.notifyTime ? $props.notifyTime : "Giờ"),
+              3
+              /* TEXT, CLASS */
+            )
+          ], 40, ["value"])
+        ])
+      ])
+    ]);
+  }
+  const TodoDatePicker = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["render", _sfc_render$2], ["__scopeId", "data-v-245edb6a"], ["__file", "D:/uni_app/vbot_todo/components/Todo/TodoDatePicker.vue"]]);
   const _sfc_main$2 = {
     __name: "create_todo",
     setup(__props, { expose: __expose }) {
       __expose();
-      const {
-        loading,
-        form,
-        formatDateDisplay,
-        bindDateChange,
-        goBack,
-        submitForm,
-        formats,
-        showLinkPopup,
-        linkUrl,
-        linkText,
-        canInsertLink,
-        isLinkSelected,
-        focusLinkInput,
-        showColorPopup,
-        currentColor,
-        currentBgColor,
-        currentHeader,
-        colorList,
-        headerOptions,
-        alignIcon,
-        isPopupOpen,
-        onEditorReady,
-        onEditorInput,
-        onStatusChange,
-        handleLinkBtn,
-        closeLinkPopup,
-        confirmLink,
-        removeLink,
-        format,
-        onHeaderChange,
-        toggleAlign,
-        openColorPicker,
-        closeColorPopup,
-        selectColor,
-        insertImage,
-        insertVideo
-      } = useCreateTodoController();
-      const __returned__ = { loading, form, formatDateDisplay, bindDateChange, goBack, submitForm, formats, showLinkPopup, linkUrl, linkText, canInsertLink, isLinkSelected, focusLinkInput, showColorPopup, currentColor, currentBgColor, currentHeader, colorList, headerOptions, alignIcon, isPopupOpen, onEditorReady, onEditorInput, onStatusChange, handleLinkBtn, closeLinkPopup, confirmLink, removeLink, format, onHeaderChange, toggleAlign, openColorPicker, closeColorPopup, selectColor, insertImage, insertVideo, get useCreateTodoController() {
+      const { loading, form, goBack, submitForm } = useCreateTodoController();
+      const __returned__ = { loading, form, goBack, submitForm, get useCreateTodoController() {
         return useCreateTodoController;
-      } };
+      }, TodoEditor, TodoDatePicker };
       Object.defineProperty(__returned__, "__isScriptSetup", { enumerable: false, value: true });
       return __returned__;
     }
@@ -1216,220 +3412,10 @@ if (uni.restoreGlobal) {
           [vue.vModelText, $setup.form.name]
         ])
       ]),
-      vue.createElementVNode("view", { class: "editor-container" }, [
-        vue.createElementVNode("view", { class: "editor-label-row" }, [
-          vue.createElementVNode("view", { class: "item-left" }, [
-            vue.createElementVNode("image", {
-              src: "https://img.icons8.com/ios/50/666666/document--v1.png",
-              class: "item-icon"
-            }),
-            vue.createElementVNode("text", { class: "label-text" }, "Mô tả")
-          ])
-        ]),
-        vue.createElementVNode("view", { class: "toolbar" }, [
-          vue.createElementVNode("view", { class: "tool-row" }, [
-            vue.createElementVNode(
-              "view",
-              {
-                class: vue.normalizeClass(["tool-item", { "active": $setup.formats.bold }]),
-                onClick: _cache[1] || (_cache[1] = ($event) => $setup.format("bold"))
-              },
-              [
-                vue.createElementVNode("text", { class: "txt-icon bold" }, "B")
-              ],
-              2
-              /* CLASS */
-            ),
-            vue.createElementVNode(
-              "view",
-              {
-                class: vue.normalizeClass(["tool-item", { "active": $setup.formats.italic }]),
-                onClick: _cache[2] || (_cache[2] = ($event) => $setup.format("italic"))
-              },
-              [
-                vue.createElementVNode("text", { class: "txt-icon italic" }, "I")
-              ],
-              2
-              /* CLASS */
-            ),
-            vue.createElementVNode(
-              "view",
-              {
-                class: vue.normalizeClass(["tool-item", { "active": $setup.formats.underline }]),
-                onClick: _cache[3] || (_cache[3] = ($event) => $setup.format("underline"))
-              },
-              [
-                vue.createElementVNode("text", { class: "txt-icon underline" }, "U")
-              ],
-              2
-              /* CLASS */
-            ),
-            vue.createElementVNode(
-              "view",
-              {
-                class: vue.normalizeClass(["tool-item", { "active": $setup.formats.strike }]),
-                onClick: _cache[4] || (_cache[4] = ($event) => $setup.format("strike"))
-              },
-              [
-                vue.createElementVNode("text", { class: "txt-icon strike" }, "S")
-              ],
-              2
-              /* CLASS */
-            ),
-            vue.createElementVNode("view", { class: "tool-divider" }),
-            vue.createElementVNode("view", {
-              class: "tool-item",
-              onClick: _cache[5] || (_cache[5] = ($event) => $setup.format("list", "ordered"))
-            }, [
-              vue.createElementVNode("image", {
-                src: "https://img.icons8.com/ios/50/666666/numbered-list.png",
-                class: "img-tool"
-              })
-            ]),
-            vue.createElementVNode("view", {
-              class: "tool-item",
-              onClick: _cache[6] || (_cache[6] = ($event) => $setup.format("list", "bullet"))
-            }, [
-              vue.createElementVNode("image", {
-                src: "https://img.icons8.com/ios/50/666666/list.png",
-                class: "img-tool"
-              })
-            ]),
-            vue.createElementVNode("picker", {
-              range: $setup.headerOptions,
-              "range-key": "label",
-              onChange: _cache[7] || (_cache[7] = (...args) => $setup.onHeaderChange && $setup.onHeaderChange(...args)),
-              class: "tool-picker"
-            }, [
-              vue.createElementVNode(
-                "view",
-                { class: "picker-label" },
-                vue.toDisplayString($setup.currentHeader) + " ▾",
-                1
-                /* TEXT */
-              )
-            ], 40, ["range"])
-          ]),
-          vue.createElementVNode("view", { class: "tool-row" }, [
-            vue.createElementVNode("view", {
-              class: "tool-item",
-              onClick: _cache[8] || (_cache[8] = ($event) => $setup.openColorPicker("color"))
-            }, [
-              vue.createElementVNode(
-                "text",
-                {
-                  class: "txt-icon color-text",
-                  style: vue.normalizeStyle({ color: $setup.currentColor })
-                },
-                "A",
-                4
-                /* STYLE */
-              ),
-              vue.createElementVNode(
-                "view",
-                {
-                  class: "color-bar",
-                  style: vue.normalizeStyle({ backgroundColor: $setup.currentColor })
-                },
-                null,
-                4
-                /* STYLE */
-              )
-            ]),
-            vue.createElementVNode("view", {
-              class: "tool-item",
-              onClick: _cache[9] || (_cache[9] = ($event) => $setup.openColorPicker("backgroundColor"))
-            }, [
-              vue.createElementVNode(
-                "text",
-                {
-                  class: "txt-icon bg-text",
-                  style: vue.normalizeStyle({ backgroundColor: $setup.currentBgColor })
-                },
-                "A",
-                4
-                /* STYLE */
-              )
-            ]),
-            vue.createElementVNode("view", { class: "tool-divider" }),
-            vue.createElementVNode("view", {
-              class: "tool-item",
-              onClick: _cache[10] || (_cache[10] = (...args) => $setup.toggleAlign && $setup.toggleAlign(...args))
-            }, [
-              vue.createElementVNode("image", {
-                src: $setup.alignIcon,
-                class: "img-tool"
-              }, null, 8, ["src"])
-            ]),
-            vue.createElementVNode("view", { class: "tool-divider" }),
-            vue.createElementVNode(
-              "view",
-              {
-                class: vue.normalizeClass(["tool-item", { "active": $setup.isLinkSelected, "disabled": !$setup.canInsertLink && !$setup.isLinkSelected }]),
-                onClick: _cache[11] || (_cache[11] = (...args) => $setup.handleLinkBtn && $setup.handleLinkBtn(...args))
-              },
-              [
-                vue.createElementVNode(
-                  "image",
-                  {
-                    src: "https://img.icons8.com/ios/50/666666/link--v1.png",
-                    class: "img-tool",
-                    style: vue.normalizeStyle({ opacity: $setup.canInsertLink || $setup.isLinkSelected ? 1 : 0.3 })
-                  },
-                  null,
-                  4
-                  /* STYLE */
-                )
-              ],
-              2
-              /* CLASS */
-            ),
-            vue.createElementVNode("view", {
-              class: "tool-item",
-              onClick: _cache[12] || (_cache[12] = (...args) => $setup.insertImage && $setup.insertImage(...args))
-            }, [
-              vue.createElementVNode("image", {
-                src: "https://img.icons8.com/ios/50/666666/image.png",
-                class: "img-tool"
-              })
-            ]),
-            vue.createElementVNode("view", {
-              class: "tool-item",
-              onClick: _cache[13] || (_cache[13] = (...args) => $setup.insertVideo && $setup.insertVideo(...args))
-            }, [
-              vue.createElementVNode("image", {
-                src: "https://img.icons8.com/ios/50/666666/video-call.png",
-                class: "img-tool"
-              })
-            ])
-          ])
-        ]),
-        $setup.isPopupOpen ? (vue.openBlock(), vue.createElementBlock("view", {
-          key: 0,
-          class: "ql-container static-view"
-        }, [
-          vue.createElementVNode("rich-text", {
-            nodes: $setup.form.desc || "<p style='color:#999'>Nhập mô tả...</p>"
-          }, null, 8, ["nodes"])
-        ])) : (vue.openBlock(), vue.createElementBlock(
-          "editor",
-          {
-            key: 1,
-            id: "editor",
-            class: "ql-container",
-            placeholder: "Nhập mô tả...",
-            "show-img-size": true,
-            "show-img-toolbar": true,
-            "show-img-resize": true,
-            onReady: _cache[14] || (_cache[14] = (...args) => $setup.onEditorReady && $setup.onEditorReady(...args)),
-            onInput: _cache[15] || (_cache[15] = (...args) => $setup.onEditorInput && $setup.onEditorInput(...args)),
-            onStatuschange: _cache[16] || (_cache[16] = (...args) => $setup.onStatusChange && $setup.onStatusChange(...args))
-          },
-          null,
-          32
-          /* NEED_HYDRATION */
-        ))
-      ]),
+      vue.createVNode($setup["TodoEditor"], {
+        modelValue: $setup.form.desc,
+        "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => $setup.form.desc = $event)
+      }, null, 8, ["modelValue"]),
       vue.createElementVNode("view", { class: "flat-item" }, [
         vue.createElementVNode("view", { class: "item-left" }, [
           vue.createElementVNode("image", {
@@ -1441,7 +3427,7 @@ if (uni.restoreGlobal) {
           "input",
           {
             class: "item-input",
-            "onUpdate:modelValue": _cache[17] || (_cache[17] = ($event) => $setup.form.customer = $event),
+            "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => $setup.form.customer = $event),
             placeholder: "Mã khách hàng"
           },
           null,
@@ -1462,7 +3448,7 @@ if (uni.restoreGlobal) {
           "input",
           {
             class: "item-input",
-            "onUpdate:modelValue": _cache[18] || (_cache[18] = ($event) => $setup.form.assignee = $event),
+            "onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => $setup.form.assignee = $event),
             placeholder: "ID người nhận"
           },
           null,
@@ -1472,195 +3458,25 @@ if (uni.restoreGlobal) {
           [vue.vModelText, $setup.form.assignee]
         ])
       ]),
-      vue.createElementVNode("view", { class: "flat-item date-compound-block" }, [
-        vue.createElementVNode("view", { class: "item-left icon-top-aligned" }, [
-          vue.createElementVNode("image", {
-            src: "https://img.icons8.com/ios/50/666666/time.png",
-            class: "item-icon"
-          })
-        ]),
-        vue.createElementVNode("view", { class: "right-column" }, [
-          vue.createElementVNode("view", { class: "date-row" }, [
-            vue.createElementVNode("picker", {
-              mode: "date",
-              value: $setup.form.dueDate,
-              onChange: _cache[19] || (_cache[19] = ($event) => $setup.bindDateChange($event, "dueDate")),
-              class: "full-width-picker"
-            }, [
-              vue.createElementVNode(
-                "view",
-                {
-                  class: vue.normalizeClass(["item-picker", { "placeholder-color": !$setup.form.dueDate }])
-                },
-                [
-                  vue.createElementVNode("text", { class: "picker-label" }, "Hết hạn:"),
-                  vue.createTextVNode(
-                    " " + vue.toDisplayString($setup.form.dueDate ? $setup.formatDateDisplay($setup.form.dueDate) : "Chọn ngày"),
-                    1
-                    /* TEXT */
-                  )
-                ],
-                2
-                /* CLASS */
-              )
-            ], 40, ["value"])
-          ]),
-          vue.createElementVNode("view", { class: "inner-divider" }),
-          vue.createElementVNode("view", { class: "date-row split-row" }, [
-            vue.createElementVNode("picker", {
-              mode: "date",
-              value: $setup.form.notifyDate,
-              onChange: _cache[20] || (_cache[20] = ($event) => $setup.bindDateChange($event, "notifyDate")),
-              class: "half-picker"
-            }, [
-              vue.createElementVNode(
-                "view",
-                {
-                  class: vue.normalizeClass(["item-picker", { "placeholder-color": !$setup.form.notifyDate }])
-                },
-                [
-                  vue.createElementVNode("text", { class: "picker-label" }, "Thông báo:"),
-                  vue.createTextVNode(
-                    " " + vue.toDisplayString($setup.form.notifyDate ? $setup.formatDateDisplay($setup.form.notifyDate) : "Ngày"),
-                    1
-                    /* TEXT */
-                  )
-                ],
-                2
-                /* CLASS */
-              )
-            ], 40, ["value"]),
-            vue.createElementVNode("view", { class: "vertical-divider" }),
-            vue.createElementVNode("picker", {
-              mode: "time",
-              value: $setup.form.notifyTime,
-              onChange: _cache[21] || (_cache[21] = ($event) => $setup.bindDateChange($event, "notifyTime")),
-              class: "half-picker"
-            }, [
-              vue.createElementVNode(
-                "view",
-                {
-                  class: vue.normalizeClass(["item-picker", { "placeholder-color": !$setup.form.notifyTime }])
-                },
-                vue.toDisplayString($setup.form.notifyTime ? $setup.form.notifyTime : "Giờ"),
-                3
-                /* TEXT, CLASS */
-              )
-            ], 40, ["value"])
-          ])
-        ])
-      ]),
+      vue.createVNode($setup["TodoDatePicker"], {
+        dueDate: $setup.form.dueDate,
+        "onUpdate:dueDate": _cache[4] || (_cache[4] = ($event) => $setup.form.dueDate = $event),
+        notifyDate: $setup.form.notifyDate,
+        "onUpdate:notifyDate": _cache[5] || (_cache[5] = ($event) => $setup.form.notifyDate = $event),
+        notifyTime: $setup.form.notifyTime,
+        "onUpdate:notifyTime": _cache[6] || (_cache[6] = ($event) => $setup.form.notifyTime = $event)
+      }, null, 8, ["dueDate", "notifyDate", "notifyTime"]),
       vue.createElementVNode("view", { class: "footer-action" }, [
         vue.createElementVNode("button", {
           class: "btn btn-cancel",
-          onClick: _cache[22] || (_cache[22] = (...args) => $setup.goBack && $setup.goBack(...args))
+          onClick: _cache[7] || (_cache[7] = (...args) => $setup.goBack && $setup.goBack(...args))
         }, "Hủy bỏ"),
         vue.createElementVNode("button", {
           class: "btn btn-submit",
           disabled: $setup.loading,
-          onClick: _cache[23] || (_cache[23] = (...args) => $setup.submitForm && $setup.submitForm(...args))
+          onClick: _cache[8] || (_cache[8] = (...args) => $setup.submitForm && $setup.submitForm(...args))
         }, vue.toDisplayString($setup.loading ? "Đang lưu..." : "Lưu công việc"), 9, ["disabled"])
-      ]),
-      $setup.showColorPopup ? (vue.openBlock(), vue.createElementBlock("view", {
-        key: 0,
-        class: "color-popup-overlay",
-        onClick: _cache[26] || (_cache[26] = (...args) => $setup.closeColorPopup && $setup.closeColorPopup(...args))
-      }, [
-        vue.createElementVNode("view", {
-          class: "color-popup",
-          onClick: _cache[25] || (_cache[25] = vue.withModifiers(() => {
-          }, ["stop"]))
-        }, [
-          vue.createElementVNode("text", { class: "popup-title" }, "Chọn màu"),
-          vue.createElementVNode("view", { class: "color-grid" }, [
-            (vue.openBlock(true), vue.createElementBlock(
-              vue.Fragment,
-              null,
-              vue.renderList($setup.colorList, (c) => {
-                return vue.openBlock(), vue.createElementBlock("view", {
-                  key: c,
-                  class: "color-cell",
-                  style: vue.normalizeStyle({ backgroundColor: c }),
-                  onClick: ($event) => $setup.selectColor(c)
-                }, null, 12, ["onClick"]);
-              }),
-              128
-              /* KEYED_FRAGMENT */
-            )),
-            vue.createElementVNode("view", {
-              class: "color-cell remove-color",
-              onClick: _cache[24] || (_cache[24] = ($event) => $setup.selectColor(null))
-            }, "✕")
-          ])
-        ])
-      ])) : vue.createCommentVNode("v-if", true),
-      $setup.showLinkPopup ? (vue.openBlock(), vue.createElementBlock("view", {
-        key: 1,
-        class: "link-popup-overlay",
-        onClick: _cache[33] || (_cache[33] = (...args) => $setup.closeLinkPopup && $setup.closeLinkPopup(...args))
-      }, [
-        vue.createElementVNode("view", {
-          class: "link-popup",
-          onClick: _cache[32] || (_cache[32] = vue.withModifiers(() => {
-          }, ["stop"]))
-        }, [
-          vue.createElementVNode(
-            "text",
-            { class: "popup-title" },
-            vue.toDisplayString($setup.isLinkSelected ? "Chỉnh sửa liên kết" : "Chèn liên kết"),
-            1
-            /* TEXT */
-          ),
-          vue.createElementVNode("view", { class: "input-group" }, [
-            vue.createElementVNode("text", { class: "input-label" }, "Văn bản hiển thị:"),
-            vue.withDirectives(vue.createElementVNode(
-              "input",
-              {
-                class: "link-input",
-                "onUpdate:modelValue": _cache[27] || (_cache[27] = ($event) => $setup.linkText = $event),
-                placeholder: "Nhập văn bản..."
-              },
-              null,
-              512
-              /* NEED_PATCH */
-            ), [
-              [vue.vModelText, $setup.linkText]
-            ])
-          ]),
-          vue.createElementVNode("view", { class: "input-group" }, [
-            vue.createElementVNode("text", { class: "input-label" }, "Đường dẫn (URL):"),
-            vue.withDirectives(vue.createElementVNode("input", {
-              class: "link-input",
-              "onUpdate:modelValue": _cache[28] || (_cache[28] = ($event) => $setup.linkUrl = $event),
-              placeholder: "https://",
-              focus: $setup.focusLinkInput
-            }, null, 8, ["focus"]), [
-              [vue.vModelText, $setup.linkUrl]
-            ])
-          ]),
-          vue.createElementVNode("view", { class: "link-actions" }, [
-            $setup.isLinkSelected ? (vue.openBlock(), vue.createElementBlock("button", {
-              key: 0,
-              class: "link-btn remove",
-              onClick: _cache[29] || (_cache[29] = (...args) => $setup.removeLink && $setup.removeLink(...args))
-            }, "Gỡ Link")) : vue.createCommentVNode("v-if", true),
-            vue.createElementVNode(
-              "button",
-              {
-                class: "link-btn cancel",
-                onClick: _cache[30] || (_cache[30] = (...args) => $setup.closeLinkPopup && $setup.closeLinkPopup(...args))
-              },
-              vue.toDisplayString($setup.isLinkSelected ? "Hủy" : "Thoát"),
-              1
-              /* TEXT */
-            ),
-            vue.createElementVNode("button", {
-              class: "link-btn confirm",
-              onClick: _cache[31] || (_cache[31] = (...args) => $setup.confirmLink && $setup.confirmLink(...args))
-            }, "Lưu")
-          ])
-        ])
-      ])) : vue.createCommentVNode("v-if", true)
+      ])
     ]);
   }
   const PagesTodoCreateTodo = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["render", _sfc_render$1], ["__file", "D:/uni_app/vbot_todo/pages/todo/create_todo.vue"]]);
@@ -1696,60 +3512,6 @@ if (uni.restoreGlobal) {
   __definePage("pages/todo/list_todo", PagesTodoListTodo);
   __definePage("pages/todo/create_todo", PagesTodoCreateTodo);
   __definePage("pages/index/index", PagesIndexIndex);
-  const systemLogin = (username, password) => {
-    return new Promise((resolve, reject) => {
-      uni.request({
-        url: "https://api-staging.vbot.vn/v1.0/token",
-        // API Auth gốc
-        method: "POST",
-        header: { "Content-Type": "application/x-www-form-urlencoded" },
-        // API token thường dùng form-urlencoded
-        data: {
-          username,
-          password,
-          grant_type: "password",
-          type_account: 0,
-          // Hoặc giá trị mặc định của bạn
-          source: "Desktop-RTC"
-          // Các field khác nếu cần fix cứng: firebase_token, token_call...
-        },
-        success: (res) => {
-          if (res.statusCode === 200 && res.data.access_token) {
-            resolve(res.data);
-          } else {
-            reject(res.data);
-          }
-        },
-        fail: (err) => reject(err)
-      });
-    });
-  };
-  const getTodoToken = (rootToken, projectCode, uid) => {
-    return new Promise((resolve, reject) => {
-      uni.request({
-        url: `https://api-staging.vbot.vn/v1.0/api/module-crm/token`,
-        method: "GET",
-        data: {
-          projectCode,
-          uid,
-          type: "TODO",
-          source: "Desktop-RTC"
-        },
-        header: {
-          // QUAN TRỌNG: Dùng Token Gốc để xin Token Con
-          "Authorization": `Bearer ${rootToken}`
-        },
-        success: (res) => {
-          if (res.data && res.data.data && res.data.data.token) {
-            resolve(res.data.data.token);
-          } else {
-            reject(res.data);
-          }
-        },
-        fail: (err) => reject(err)
-      });
-    });
-  };
   const _sfc_main = {
     onLaunch: async function(options) {
       formatAppLog("log", "at App.vue:6", "--- App Launching ---");
@@ -1764,8 +3526,8 @@ if (uni.restoreGlobal) {
       formatAppLog("log", "at App.vue:21", ">> Mode: Development");
       const storedTodoToken = uni.getStorageSync("todo_access_token");
       const tokenExpiryTime = uni.getStorageSync("token_expiry_time");
-      const now = Date.now();
-      if (storedTodoToken && tokenExpiryTime && now < tokenExpiryTime) {
+      const now2 = Date.now();
+      if (storedTodoToken && tokenExpiryTime && now2 < tokenExpiryTime) {
         formatAppLog("log", "at App.vue:30", ">> Token cũ vẫn còn hạn, không cần Login lại.");
         return;
       }
@@ -1802,8 +3564,10 @@ if (uni.restoreGlobal) {
   const App = /* @__PURE__ */ _export_sfc(_sfc_main, [["__file", "D:/uni_app/vbot_todo/App.vue"]]);
   function createApp() {
     const app = vue.createVueApp(App);
+    app.use(createPinia());
     return {
-      app
+      app,
+      Pinia
     };
   }
   const { app: __app__, Vuex: __Vuex__, Pinia: __Pinia__ } = createApp();
