@@ -7,9 +7,9 @@ export const TODO_STATUS = {
 };
 
 export const STATUS_LABELS = {
-    [TODO_STATUS.NEW]: 'Mới',
-    [TODO_STATUS.IN_PROGRESS]: 'Đang làm',
-    [TODO_STATUS.DONE]: 'Xong'
+    [TODO_STATUS.NEW]: 'Chưa xử lý',
+    [TODO_STATUS.IN_PROGRESS]: 'Đang xử lý',
+    [TODO_STATUS.DONE]: 'Hoàn thành'
 };
 
 export const STATUS_COLORS = {

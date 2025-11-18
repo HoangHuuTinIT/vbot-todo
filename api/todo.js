@@ -34,3 +34,11 @@ export const createTodo = (data) => {
         data: data
     });
 };
+
+export const deleteTodo = (id) => {
+    return request({
+        url: `${API_URL}/delete`,
+        method: 'POST',
+        data: { id: id } // Body gửi lên chỉ cần id
+    });
+};

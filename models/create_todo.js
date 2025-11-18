@@ -1,34 +1,26 @@
 // models/create_todo.js
 
-// Helper: Chuyển đổi ngày sang timestamp an toàn (Hỗ trợ cả YYYY-MM-DD và DD/MM/YYYY)
+// Helper: Chuyển đổi chuỗi ngày giờ sang timestamp
 const dateToTimestamp = (dateStr) => {
     if (!dateStr) return -1;
-
-    let dateObj;
-
-    // Trường hợp 1: Định dạng ISO (YYYY-MM-DD...) do uni-datetime-picker trả về
-    if (dateStr.includes('-')) {
-        dateObj = new Date(dateStr);
-    } 
-    // Trường hợp 2: Định dạng VN (DD/MM/YYYY...) cũ
-    else if (dateStr.includes('/')) {
-        // Tách ngày và giờ (nếu có)
-        const [dPart, tPart] = dateStr.split(' ');
-        const [day, month, year] = dPart.split('/');
-        // Chuyển về format ISO để new Date hiểu được trên iOS
-        const isoStr = `${year}-${month}-${day}${tPart ? 'T' + tPart : ''}`;
-        dateObj = new Date(isoStr);
-    } else {
-        dateObj = new Date(dateStr);
-    }
-
+    // Thay thế dấu / bằng - để đảm bảo chuẩn ISO nếu cần (cho iOS)
+    const safeDateStr = dateStr.replace(/\//g, '-');
+    const dateObj = new Date(safeDateStr);
     return isNaN(dateObj.getTime()) ? -1 : dateObj.getTime();
 };
 
 /**
- * Model: Xây dựng Payload để tạo công việc mới
+ * Model: Xây dựng Payload
  */
 export const buildCreateTodoPayload = (form, config) => {
+    
+    // Ghép Ngày + Giờ cho phần thông báo
+    // Ví dụ: "2025-11-18" + " " + "14:30" = "2025-11-18 14:30"
+    const fullNotifyDateTime = `${form.notifyDate} ${form.notifyTime || '00:00'}`;
+
+    // Với ngày hết hạn, thường mặc định là cuối ngày hoặc đầu ngày (ở đây để nguyên ngày)
+    const fullDueDate = form.dueDate; 
+
     return {
         // 1. Các trường Text cơ bản
         title: form.name,
@@ -53,8 +45,8 @@ export const buildCreateTodoPayload = (form, config) => {
         files: "",
         phone: "072836272322",
         
-        // 5. Các trường Thời gian
-        dueDate: dateToTimestamp(form.dueDate),
-        notificationReceivedAt: dateToTimestamp(form.notifyDate)
+        // 5. Các trường Thời gian (Đã xử lý ghép chuỗi ở trên)
+        dueDate: dateToTimestamp(fullDueDate),
+        notificationReceivedAt: dateToTimestamp(fullNotifyDateTime)
     };
 };
